@@ -1,9 +1,9 @@
--- FlightSim server command router v0.4
+-- FlightSim server command router v0.5
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
-local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,WeatherRadar=true}
+local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true}
 local function finite(n) return type(n)=="number" and n==n and n>-math.huge and n<math.huge end
-function CommandRouter.new(registry,getFMC) return setmetatable({registry=registry,getFMC=getFMC,lastCommand={}},CommandRouter) end
+function CommandRouter.new(registry,getFMC,getRadio,getTransponder) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,lastCommand={}},CommandRouter) end
 function CommandRouter:_allowed(p,id) return self.registry:GetOwner(id)==p end
 function CommandRouter:_rateOK(p)
 	local now=os.clock(); local key=p.UserId; local r=self.lastCommand[key]
@@ -34,8 +34,10 @@ function CommandRouter:Handle(player,id,command,a,b)
 	elseif command=="FMCPage" then local f=self.getFMC and self.getFMC(id); if not f then return false,"fmc_not_found" end; return f:SetPage(a)
 	elseif command=="FMCScratchpad" then local f=self.getFMC and self.getFMC(id); if not f then return false,"fmc_not_found" end; return f:SetScratchpad(a)
 	elseif command=="FMCRoute" then local f=self.getFMC and self.getFMC(id); if not f then return false,"fmc_not_found" end; if type(a)~="table" then return false,"invalid_route" end; return f:SetRoute(a.Origin,a.Destination,a.Route,a.CruiseAltitude)
-	elseif command=="RadioFrequency" then local name=string.upper(tostring(a)); local f=tonumber(b); if not finite(f) or not name:match("^[A-Z][A-Z0-9_]{0,15}$") then return false,"invalid_frequency" end; x.Radios=x.Radios or {}; x.Radios[name]=f
-	elseif command=="TransponderCode" then local code=tostring(a); if not code:match("^[0-7][0-7][0-7][0-7]$") then return false,"invalid_transponder" end; x.Transponder.Code=code
+	elseif command=="RadioFrequency" then local r=self.getRadio and self.getRadio(id); if not r then return false,"radio_not_found" end; return r:Set(a,b)
+	elseif command=="TransponderCode" then local t=self.getTransponder and self.getTransponder(id); if not t then return false,"transponder_not_found" end; return t:SetCode(a)
+	elseif command=="TransponderMode" then local t=self.getTransponder and self.getTransponder(id); if not t then return false,"transponder_not_found" end; return t:SetMode(a)
+	elseif command=="TransponderIdent" then local t=self.getTransponder and self.getTransponder(id); if not t then return false,"transponder_not_found" end; return t:Ident()
 	elseif command=="WeatherRadar" then x.Avionics.WeatherRadarEnabled=a==true end
 	return true
 end
