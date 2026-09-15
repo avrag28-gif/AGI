@@ -1,4 +1,4 @@
--- FlightSim modular runtime v0.4
+-- FlightSim modular runtime v0.5
 -- Server-authoritative simulation entry point.
 -- Static ModuleScripts are expected under script.Parent/FlightSimSystems.
 
@@ -21,7 +21,9 @@ local LandingGear = require(systemsFolder:WaitForChild("LandingGear"))
 local Brakes = require(systemsFolder:WaitForChild("Brakes"))
 local Avionics = require(systemsFolder:WaitForChild("Avionics"))
 local Navigation = require(systemsFolder:WaitForChild("Navigation"))
+local WaypointManager = require(systemsFolder:WaitForChild("WaypointManager"))
 local Autopilot = require(systemsFolder:WaitForChild("Autopilot"))
+local VNAV = require(systemsFolder:WaitForChild("VNAV"))
 local FMC = require(systemsFolder:WaitForChild("FMC"))
 local Physics = require(systemsFolder:WaitForChild("Physics"))
 local AircraftRegistry = require(systemsFolder:WaitForChild("AircraftRegistry"))
@@ -39,17 +41,11 @@ local function createAircraftForPlayer(player)
 	registry:Register(id, state, player)
 	simulations[id] = {
 		state = state,
-		electrical = Electrical.new(state),
-		engine = Engine.new(state),
-		core = Core.new(state),
-		flightControls = FlightControls.new(state),
-		landingGear = LandingGear.new(state),
-		brakes = Brakes.new(state),
-		avionics = Avionics.new(state),
-		navigation = Navigation.new(state),
-		autopilot = Autopilot.new(state),
-		fmc = FMC.new(state),
-		physics = Physics.new(state),
+		electrical = Electrical.new(state), engine = Engine.new(state), core = Core.new(state),
+		flightControls = FlightControls.new(state), landingGear = LandingGear.new(state),
+		brakes = Brakes.new(state), avionics = Avionics.new(state), navigation = Navigation.new(state),
+		waypoints = WaypointManager.new(state), autopilot = Autopilot.new(state),
+		vnav = VNAV.new(state), fmc = FMC.new(state), physics = Physics.new(state),
 	}
 end
 
@@ -61,9 +57,7 @@ end
 
 Players.PlayerAdded:Connect(createAircraftForPlayer)
 Players.PlayerRemoving:Connect(removeAircraftForPlayer)
-for _, player in Players:GetPlayers() do
-	createAircraftForPlayer(player)
-end
+for _, player in Players:GetPlayers() do createAircraftForPlayer(player) end
 
 local commandRemote = remotes:FindFirstChild("AircraftCommand")
 if commandRemote then
@@ -71,27 +65,25 @@ if commandRemote then
 		local id = registry:GetForPlayer(player)
 		if not id then return end
 		local ok, reason = router:Handle(player, id, command, a, b)
-		if not ok then
-			warn("[FlightSim] rejected command", player.Name, reason)
-		end
+		if not ok then warn("[FlightSim] rejected command", player.Name, reason) end
 	end)
 end
 
-local accumulator = 0
-local telemetryAccumulator = 0
+local accumulator, telemetryAccumulator = 0, 0
 local fixedStep = 1 / (tonumber(Config.SimulationRate) or 60)
 
 local function simulationStep(dt)
 	registry:ForEach(function(id)
 		local sim = simulations[id]
 		if not sim then return end
-
 		sim.electrical:Step(dt)
 		sim.engine:Step(dt)
 		sim.electrical:Step(dt)
 		sim.core:Step(dt)
 		sim.fmc:Step(dt)
+		sim.waypoints:Step(dt)
 		sim.navigation:Step(dt)
+		sim.vnav:Step(dt)
 		sim.autopilot:Step(dt)
 		sim.flightControls:Step(dt)
 		sim.landingGear:Step(dt)
@@ -110,8 +102,7 @@ RunService.Heartbeat:Connect(function(frameDt)
 	end
 
 	telemetryAccumulator += frameDt
-	local rate = tonumber(Config.TelemetryRate) or 20
-	if telemetryAccumulator >= 1 / rate then
+	if telemetryAccumulator >= 1 / (tonumber(Config.TelemetryRate) or 20) then
 		telemetryAccumulator = 0
 		local telemetry = remotes:FindFirstChild("Telemetry")
 		if telemetry then
