@@ -1,11 +1,12 @@
--- FlightSim authoritative aircraft state v0.6
+-- FlightSim authoritative aircraft state v0.7
 local State={}; State.__index=State
 local function engineState() return {N1=0,N2=0,EGT=20,OilPressure=0,FuelFlow=0,Thrust=0,Running=false,Starter=false,FuelOn=false,Ignition=false,GeneratorAvailable=false,StartFailed=false} end
 function State.new() return setmetatable({
  Phase="ColdAndDark",Altitude=0,Airspeed=0,Heading=0,Pitch=0,Roll=0,Yaw=0,Position=Vector3.zero,Velocity=Vector3.zero,
+ VerticalSpeed=0,AirspeedTrue=0,AoA=0,StallWarning=false,Lift=0,Drag=0,Weight=0,Mass=0,TrimPitch=0,GroundContact=true,
  Throttle={[1]=0,[2]=0},Engines={[1]=engineState(),[2]=engineState()},Electrical={Battery=false,ExternalPower=false,APU=false,Bus1=false,Bus2=false},Hydraulic={A=0,B=0},
  Fuel={Left=10000,Center=10000,Right=10000,Total=30000},Controls={Aileron=0,Elevator=0,Rudder=0,Flap=0,Trim=0},Surface={Aileron=0,Elevator=0,Rudder=0,Flap=0},
- Gear={Nose=true,Left=true,Right=true},GearPosition={Nose=1,Left=1,Right=1},Brakes={Parking=true,BrakePressure=0},BrakePressure=0,
+ Gear={Nose=true,Left=true,Right=true},GearPosition={Nose=1,Left=1,Right=1},Brakes={Parking=true,BrakePressure=0},
  Avionics={IRS=false,FMC=false,Radios=false,Transponder=false,TCAS=false,WeatherRadar=false,WeatherRadarEnabled=true},
  Radios={COM1=118.000,COM2=121.500,NAV1=110.000,NAV2=112.000,ADF1=350,ADF2=400},Transponder={Code="2000",Mode="STBY",Ident=false,IdentRemaining=0},
  Navigation={Mode="HDG",ActiveWaypoint=1,Route={},DistanceToWaypoint=0,BearingToWaypoint=0,CrossTrackError=0,RouteComplete=false,CommandHeading=0,HeadingError=0,CommandAltitude=0},
