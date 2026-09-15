@@ -1,6 +1,0 @@
-{
-  "name": "AGI",
-  "description": "Adaptive Gaming Intelligence (AGI) is a modern cyber performance dashboard and diagnostics tool for mobile gamers.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
