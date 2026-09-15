@@ -1,4 +1,4 @@
--- FlightSim approach / ILS foundation v0.1
+-- FlightSim approach / ILS guidance foundation v0.2
 -- Runway references are supplied by airport data; this module does not invent an airport.
 local Approach={}; Approach.__index=Approach
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -18,7 +18,7 @@ function Approach:Step(dt)
  local course=math.rad(r.Heading); local along=dx*math.sin(course)+dz*math.cos(course); local lateral=dx*math.cos(course)-dz*math.sin(course)
  local horizontal=dist(x.Position,r.Position)
  local desiredAlt=r.Elevation + math.tan(math.rad(r.GlideSlope))*math.max(-along,0)
- n.ILS={Available=true,Localizer=clamp(-lateral/math.max(r.LocalizerLength,1),-1,1),GlideSlope=clamp((x.Altitude-desiredAlt)/max(50,horizontal*0.03),-1,1),Distance=horizontal,Bearing=bearing(x.Position,r.Position),CourseError=hdgErr(r.Heading,x.Heading),DesiredAltitude=desiredAlt}
+ n.ILS={Available=true,Localizer=clamp(-lateral/math.max(r.LocalizerLength,1),-1,1),GlideSlope=clamp((x.Altitude-desiredAlt)/math.max(50,horizontal*0.03),-1,1),Distance=horizontal,Bearing=bearing(x.Position,r.Position),CourseError=hdgErr(r.Heading,x.Heading),DesiredAltitude=desiredAlt}
  if n.Mode=="APP" then n.CommandHeading=wrap(r.Heading - n.ILS.Localizer*20); n.CommandAltitude=desiredAlt end
 end
 return Approach
