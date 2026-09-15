@@ -1,4 +1,4 @@
--- FlightSim autopilot / ILS capture / go-around foundation v0.4
+-- FlightSim autopilot / ILS capture / go-around foundation v0.5
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function err(t,c) return (t-c+540)%360-180 end
@@ -12,6 +12,7 @@ function Autopilot:Step(dt)
   ap.Mode="GO_AROUND"
   local targetH=ap.TargetHeading or x.Heading
   local targetA=math.max(ap.TargetAltitude or 0,x.Altitude+1000)
+  ap.TargetAltitude=targetA
   local he=err(targetH,x.Heading); local ae=targetA-x.Altitude
   ap.CommandBank=clamp(he/25,-0.7,0.7)
   ap.CommandPitch=clamp(ae/900,-0.45,0.45)
