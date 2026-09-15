@@ -1,4 +1,4 @@
--- FlightSim brake system v0.1
+-- FlightSim brake system v0.2
 local Brakes = {}
 Brakes.__index = Brakes
 
@@ -8,12 +8,16 @@ end
 
 function Brakes:Step(dt)
 	local x = self.state:Get()
-	x.BrakePressure = x.BrakePressure or 0
-	local target = x.Brakes.Parking and 1 or 0
+	local brakes = x.Brakes
+	brakes.BrakePressure = tonumber(brakes.BrakePressure) or 0
+
+	local target = brakes.Parking and 1 or 0
 	local hydraulic = math.max(x.Hydraulic.A or 0, x.Hydraulic.B or 0)
 	local available = math.clamp(hydraulic / 1800, 0, 1)
 	target *= available
-	x.BrakePressure += (target - x.BrakePressure) * math.min(1, 6 * dt)
+
+	brakes.BrakePressure += (target - brakes.BrakePressure) * math.min(1, 6 * dt)
+	brakes.BrakePressure = math.clamp(brakes.BrakePressure, 0, 1)
 end
 
 return Brakes
