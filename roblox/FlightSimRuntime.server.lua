@@ -1,4 +1,4 @@
--- FlightSim modular runtime v0.3
+-- FlightSim modular runtime v0.4
 -- Server-authoritative simulation entry point.
 -- Static ModuleScripts are expected under script.Parent/FlightSimSystems.
 
@@ -13,14 +13,17 @@ local remotes = shared:WaitForChild("Remotes")
 
 local Config = require(systemsFolder:WaitForChild("Config"))
 local State = require(systemsFolder:WaitForChild("State"))
+local Electrical = require(systemsFolder:WaitForChild("Electrical"))
 local Engine = require(systemsFolder:WaitForChild("Engine"))
 local Core = require(systemsFolder:WaitForChild("Core"))
-local Physics = require(systemsFolder:WaitForChild("Physics"))
-local Electrical = require(systemsFolder:WaitForChild("Electrical"))
 local FlightControls = require(systemsFolder:WaitForChild("FlightControls"))
 local LandingGear = require(systemsFolder:WaitForChild("LandingGear"))
 local Brakes = require(systemsFolder:WaitForChild("Brakes"))
 local Avionics = require(systemsFolder:WaitForChild("Avionics"))
+local Navigation = require(systemsFolder:WaitForChild("Navigation"))
+local Autopilot = require(systemsFolder:WaitForChild("Autopilot"))
+local FMC = require(systemsFolder:WaitForChild("FMC"))
+local Physics = require(systemsFolder:WaitForChild("Physics"))
 local AircraftRegistry = require(systemsFolder:WaitForChild("AircraftRegistry"))
 local CommandRouter = require(systemsFolder:WaitForChild("CommandRouter"))
 
@@ -31,6 +34,7 @@ local simulations = {}
 local function createAircraftForPlayer(player)
 	local id = "P_" .. tostring(player.UserId)
 	if registry:Get(id) then return end
+
 	local state = State.new()
 	registry:Register(id, state, player)
 	simulations[id] = {
@@ -42,6 +46,9 @@ local function createAircraftForPlayer(player)
 		landingGear = LandingGear.new(state),
 		brakes = Brakes.new(state),
 		avionics = Avionics.new(state),
+		navigation = Navigation.new(state),
+		autopilot = Autopilot.new(state),
+		fmc = FMC.new(state),
 		physics = Physics.new(state),
 	}
 end
@@ -78,11 +85,14 @@ local function simulationStep(dt)
 	registry:ForEach(function(id)
 		local sim = simulations[id]
 		if not sim then return end
-		-- Source/electrical state is established before engine operation.
+
 		sim.electrical:Step(dt)
 		sim.engine:Step(dt)
 		sim.electrical:Step(dt)
 		sim.core:Step(dt)
+		sim.fmc:Step(dt)
+		sim.navigation:Step(dt)
+		sim.autopilot:Step(dt)
 		sim.flightControls:Step(dt)
 		sim.landingGear:Step(dt)
 		sim.brakes:Step(dt)
