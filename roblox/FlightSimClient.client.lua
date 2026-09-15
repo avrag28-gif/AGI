@@ -53,7 +53,6 @@ help.TextYAlignment = Enum.TextYAlignment.Top
 help.Text = "INPUT\nW/S = elevator   A/D = aileron   Q/E = rudder\nF = flap toggle   G = landing gear   B = parking brake\n1/2 = engine starter   R/T = engine fuel   Y/U = ignition\nP = battery   O = APU   L = autopilot"
 help.Parent = gui
 
-local latest
 local flap = 0
 local gearDown = true
 local parkingBrake = true
@@ -68,8 +67,16 @@ local function send(name, a, b)
 	command:FireServer(name, a, b)
 end
 
-local function updateControls()
+-- Flight controls are sampled locally but sent only when the value changes,
+-- avoiding a RemoteEvent call every rendered frame.
+local lastControl = {Elevator=999, Aileron=999, Rudder=999}
+local controlAccumulator = 0
+local function updateControls(dt)
 	if UserInputService:GetFocusedTextBox() then return end
+	controlAccumulator += dt
+	if controlAccumulator < 0.05 then return end -- 20 Hz network rate
+	controlAccumulator = 0
+
 	local elevator, aileron, rudder = 0, 0, 0
 	if UserInputService:IsKeyDown(Enum.KeyCode.W) then elevator += 1 end
 	if UserInputService:IsKeyDown(Enum.KeyCode.S) then elevator -= 1 end
@@ -77,9 +84,14 @@ local function updateControls()
 	if UserInputService:IsKeyDown(Enum.KeyCode.A) then aileron -= 1 end
 	if UserInputService:IsKeyDown(Enum.KeyCode.E) then rudder += 1 end
 	if UserInputService:IsKeyDown(Enum.KeyCode.Q) then rudder -= 1 end
-	send("Control", "Elevator", elevator)
-	send("Control", "Aileron", aileron)
-	send("Control", "Rudder", rudder)
+
+	local values = {Elevator=elevator, Aileron=aileron, Rudder=rudder}
+	for name, value in pairs(values) do
+		if lastControl[name] ~= value then
+			lastControl[name] = value
+			send("Control", name, value)
+		end
+	end
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -113,7 +125,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 telemetry.OnClientEvent:Connect(function(state)
-	latest = state
 	local e1, e2 = state.Engines[1], state.Engines[2]
 	readout.Text = string.format(
 		"PHASE  %-14s\nALT    %7.0f ft     IAS %5.0f kt\nHDG    %7.1f°      P/R %4.1f/%4.1f°\n\nENG 1  N1 %5.1f%%  N2 %5.1f%%  EGT %4.0f\n       OIL %5.1f%%  FF %6.0f  RUN %s\nENG 2  N1 %5.1f%%  N2 %5.1f%%  EGT %4.0f\n       OIL %5.1f%%  FF %6.0f  RUN %s\n\nELEC   BAT %s  APU %s  BUS %s/%s\nHYD    A %4.0f psi   B %4.0f psi\nFUEL   %7.0f / 30000\nGEAR   %s       FLAP %.0f%%     BRK %s\nAP     %s  ALT %6.0f  HDG %6.1f",
