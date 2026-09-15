@@ -1,4 +1,4 @@
--- FlightSim modular runtime v1.0
+-- FlightSim modular runtime v1.1
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
@@ -7,7 +7,7 @@ local shared=ReplicatedStorage:WaitForChild("FlightSim"); local remotes=shared:W
 local Config=require(systemsFolder:WaitForChild("Config")); local State=require(systemsFolder:WaitForChild("State"))
 local Electrical=require(systemsFolder:WaitForChild("Electrical")); local Engine=require(systemsFolder:WaitForChild("Engine")); local Core=require(systemsFolder:WaitForChild("Core"))
 local FlightControls=require(systemsFolder:WaitForChild("FlightControls")); local LandingGear=require(systemsFolder:WaitForChild("LandingGear")); local Brakes=require(systemsFolder:WaitForChild("Brakes")); local Avionics=require(systemsFolder:WaitForChild("Avionics"))
-local Navigation=require(systemsFolder:WaitForChild("Navigation")); local Autopilot=require(systemsFolder:WaitForChild("Autopilot")); local VNAV=require(systemsFolder:WaitForChild("VNAV")); local FMC=require(systemsFolder:WaitForChild("FMC")); local MCP=require(systemsFolder:WaitForChild("MCP")); local Approach=require(systemsFolder:WaitForChild("Approach")); local Physics=require(systemsFolder:WaitForChild("Physics")); local Trim=require(systemsFolder:WaitForChild("Trim"))
+local Navigation=require(systemsFolder:WaitForChild("Navigation")); local Autopilot=require(systemsFolder:WaitForChild("Autopilot")); local VNAV=require(systemsFolder:WaitForChild("VNAV")); local FMC=require(systemsFolder:WaitForChild("FMC")); local MCP=require(systemsFolder:WaitForChild("MCP")); local Approach=require(systemsFolder:WaitForChild("Approach")); local VOR=require(systemsFolder:WaitForChild("VOR")); local Physics=require(systemsFolder:WaitForChild("Physics")); local Trim=require(systemsFolder:WaitForChild("Trim"))
 local Radio=require(systemsFolder:WaitForChild("Radio")); local Transponder=require(systemsFolder:WaitForChild("Transponder")); local AircraftRegistry=require(systemsFolder:WaitForChild("AircraftRegistry")); local CommandRouter=require(systemsFolder:WaitForChild("CommandRouter"))
 local registry=AircraftRegistry.new(); local simulations={}
 local function get(id,key) local s=simulations[id]; return s and s[key] end
@@ -15,7 +15,7 @@ local router=CommandRouter.new(registry,function(id)return get(id,"fmc") end,fun
 local function createAircraftForPlayer(player)
  local id="P_"..tostring(player.UserId); if registry:Get(id) then return end
  local state=State.new(); registry:Register(id,state,player)
- simulations[id]={state=state,electrical=Electrical.new(state),engine=Engine.new(state),core=Core.new(state),flightControls=FlightControls.new(state),landingGear=LandingGear.new(state),brakes=Brakes.new(state),avionics=Avionics.new(state),navigation=Navigation.new(state),autopilot=Autopilot.new(state),vnav=VNAV.new(state),fmc=FMC.new(state),mcp=MCP.new(state),approach=Approach.new(state),radio=Radio.new(state),transponder=Transponder.new(state),trim=Trim.new(state),physics=Physics.new(state)}
+ simulations[id]={state=state,electrical=Electrical.new(state),engine=Engine.new(state),core=Core.new(state),flightControls=FlightControls.new(state),landingGear=LandingGear.new(state),brakes=Brakes.new(state),avionics=Avionics.new(state),navigation=Navigation.new(state),autopilot=Autopilot.new(state),vnav=VNAV.new(state),fmc=FMC.new(state),mcp=MCP.new(state),approach=Approach.new(state),vor=VOR.new(state),radio=Radio.new(state),transponder=Transponder.new(state),trim=Trim.new(state),physics=Physics.new(state)}
 end
 local function removeAircraftForPlayer(player) local id="P_"..tostring(player.UserId); registry:Unregister(id); simulations[id]=nil end
 Players.PlayerAdded:Connect(createAircraftForPlayer); Players.PlayerRemoving:Connect(removeAircraftForPlayer); for _,p in Players:GetPlayers() do createAircraftForPlayer(p) end
@@ -26,7 +26,7 @@ local function simulationStep(dt)
  registry:ForEach(function(id)
   local s=simulations[id]; if not s then return end
   s.electrical:Step(dt); s.engine:Step(dt); s.electrical:Step(dt); s.core:Step(dt)
-  s.fmc:Step(dt); s.navigation:Step(dt); s.vnav:Step(dt); s.mcp:Step(dt); s.approach:Step(dt); s.autopilot:Step(dt)
+  s.fmc:Step(dt); s.navigation:Step(dt); s.vor:Step(dt); s.vnav:Step(dt); s.mcp:Step(dt); s.approach:Step(dt); s.autopilot:Step(dt)
   s.trim:Step(dt); s.flightControls:Step(dt); s.landingGear:Step(dt); s.brakes:Step(dt); s.avionics:Step(dt); s.radio:Step(dt); s.transponder:Step(dt); s.physics:Step(dt)
  end)
 end
