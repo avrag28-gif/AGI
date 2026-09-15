@@ -9,7 +9,7 @@ function State.new() return setmetatable({
  Gear={Nose=true,Left=true,Right=true},GearPosition={Nose=1,Left=1,Right=1},Brakes={Parking=true,BrakePressure=0},
  Avionics={IRS=false,FMC=false,Radios=false,Transponder=false,TCAS=false,WeatherRadar=false,WeatherRadarEnabled=true},
  Radios={COM1=118.000,COM2=121.500,NAV1=110.000,NAV2=112.000,ADF1=350,ADF2=400},Transponder={Code="2000",Mode="STBY",Ident=false,IdentRemaining=0},
- Navigation={Mode="HDG",ActiveWaypoint=1,Route={},DistanceToWaypoint=0,BearingToWaypoint=0,CrossTrackError=0,RouteComplete=false,CommandHeading=0,HeadingError=0,CommandAltitude=0,ApproachRunway=nil,ILS=nil},
+ Navigation={Mode="HDG",ActiveWaypoint=1,Route={},DistanceToWaypoint=0,BearingToWaypoint=0,CrossTrackError=0,RouteComplete=false,CommandHeading=0,HeadingError=0,CommandAltitude=0,ApproachRunway=nil,ILS=nil,VOR=nil},
  Autopilot={Enabled=false,TargetAltitude=0,TargetHeading=0,Mode="HDG",CommandBank=0,CommandPitch=0,CommandAileron=0,CommandElevator=0},
  VNAV={Mode="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0},FMC={Page="IDENT",Scratchpad="",Origin=nil,Destination=nil,CruiseAltitude=nil,Route={},Active=false},Failures={}
  },State) end
