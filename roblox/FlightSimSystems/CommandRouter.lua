@@ -1,7 +1,7 @@
--- FlightSim server command router v0.7
+-- FlightSim server command router v0.8
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
-local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,ApproachRunway=true}
+local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,ApproachRunway=true,Trim=true}
 local function finite(n) return type(n)=="number" and n==n and n>-math.huge and n<math.huge end
 function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,lastCommand={}},CommandRouter) end
 function CommandRouter:_allowed(p,id) return self.registry:GetOwner(id)==p end
@@ -42,7 +42,8 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="MCPHeading" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetHeading(a)
  elseif command=="MCPAltitude" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetAltitude(a)
  elseif command=="MCPMode" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetMode(a)
- elseif command=="ApproachRunway" then local ap=self.getApproach and self.getApproach(id); if not ap then return false,"approach_not_found" end; return ap:SetRunway(a) end
+ elseif command=="ApproachRunway" then local ap=self.getApproach and self.getApproach(id); if not ap then return false,"approach_not_found" end; return ap:SetRunway(a)
+ elseif command=="Trim" then x.Controls.Trim=math.clamp(tonumber(a) or 0,-1,1) end
  return true
 end
 return CommandRouter
