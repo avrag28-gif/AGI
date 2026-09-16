@@ -1,4 +1,4 @@
--- FlightSim aerodynamic / ground dynamics foundation v1.5
+-- FlightSim aerodynamic / ground dynamics foundation v1.6
 -- Game simulation model; coefficients are tunable approximations, not certified aircraft data.
 local Config=require(script.Parent.Config)
 local Physics={}; Physics.__index=Physics
@@ -19,8 +19,7 @@ function Physics:Step(dt)
  local leftBrake=clamp((x.Brakes and x.Brakes.LeftPressure) or brakePressure,0,1)
  local rightBrake=clamp((x.Brakes and x.Brakes.RightPressure) or brakePressure,0,1)
  local wingArea=125.0; local rho=1.225*math.exp(-math.max(x.Altitude or 0,0)/8500)
- local trim=clamp(x.TrimPitch or 0,-8,8)
- local aoa=clamp((x.Pitch or 0)-trim,-20,30)
+ local trim=clamp(x.TrimPitch or 0,-8,8); local aoa=clamp((x.Pitch or 0)-trim,-20,30)
  local flapLift=0.52*flap+0.20*flap*flap; local flapDrag=0.025*flap+0.035*flap*flap
  local cl=0.45+0.085*aoa+flapLift; local stallAoA=15
  local stallRatio=clamp((math.abs(aoa)-stallAoA)/8,0,1); cl*=1-0.75*stallRatio
@@ -42,24 +41,14 @@ function Physics:Step(dt)
  if ground and reverseRequested then x.Landing.ReverseThrust=true elseif x.Landing then x.Landing.ReverseThrust=false end
  if x.Landing then x.Landing.BrakingActive=ground and brakePressure>0.03 and speedKts>3 end
  local qFactor=clamp(speedKts/140,0.12,1.2); local hydraulicAuthority=clamp(math.max(x.Hydraulic.A or 0,x.Hydraulic.B or 0)/1800,0,1)
- local elevator=clamp(s.Elevator or 0,-1,1)
- local aileron=clamp(s.Aileron or 0,-1,1)
- local rudder=clamp(s.Rudder or 0,-1,1)
- if ground then
-  local rotationAuthority=clamp((speedKts-55)/40,0.10,1)
-  elevator*=rotationAuthority
- end
+ local elevator=clamp(s.Elevator or 0,-1,1); local aileron=clamp(s.Aileron or 0,-1,1); local rudder=clamp(s.Rudder or 0,-1,1)
+ if ground then local rotationAuthority=clamp((speedKts-55)/40,0.10,1); elevator*=rotationAuthority end
  local pitchControl=elevator*9*qFactor*hydraulicAuthority
  local rollControl=aileron*28*qFactor*hydraulicAuthority
  local rudderControl=rudder*9*qFactor*hydraulicAuthority
- -- Longitudinal static stability: the aircraft naturally tends back toward a
- -- trimmed angle of attack instead of holding an arbitrary pitch attitude.
  local trimAoA=2.5+clamp(flap*1.5,0,1.5)
  local aoaError=aoa-trimAoA
  local staticPitchStability=clamp(aoaError*0.30,-7,7)
- -- Speed stability adds a small nose-down tendency when materially above the
- -- trimmed speed and nose-up tendency when materially below it. This remains
- -- deliberately bounded because the full mass/thrust/CG model comes later.
  local referenceSpeed=clamp(125+flap*20,85,180)
  local speedError=(speedKts-referenceSpeed)/35
  local speedStability=clamp(speedError*0.65,-3.5,3.5)
@@ -71,36 +60,34 @@ function Physics:Step(dt)
   pitchRate=approach(pitchRate,pitchControl-staticPitchStability,7,dt)
   x.Sideslip=approach(x.Sideslip or 0,0,4,dt)
  else
-  local bank=clamp(x.Roll or 0,-70,70)
-  local bankRad=math.rad(bank)
-  local turnRate=0
+  local bank=clamp(x.Roll or 0,-70,70); local bankRad=math.rad(bank); local turnRate=0
   if speedMS>15 then turnRate=math.deg(9.80665*math.tan(bankRad)/speedMS) end
   turnRate=clamp(turnRate,-12,12)
   local desiredBeta=clamp(rudder*4.5+turnRate*0.10-rollControl*0.035,-10,10)
   local beta=x.Sideslip or x.Beta or 0
   local betaRate=(desiredBeta-beta)*2.8-beta*0.55-yawRate*0.045
   beta=clamp(beta+betaRate*dt,-12,12)
-  local weathercock=-beta*0.95
-  local yawDamping=-yawRate*0.72
-  local adverseYaw=-aileron*1.4*qFactor*hydraulicAuthority
-  local coordinatedYaw=turnRate*0.32
-  local targetYawRate=coordinatedYaw+rudderControl+weathercock+yawDamping+adverseYaw
+  local weathercock=-beta*0.95; local yawDamping=-yawRate*0.72; local adverseYaw=-aileron*1.4*qFactor*hydraulicAuthority
+  local targetYawRate=turnRate*0.32+rudderControl+weathercock+yawDamping+adverseYaw
   yawRate=approach(yawRate,targetYawRate,5.5,dt)
   local rollDamping=-rollRate*0.58*qFactor
   rollRate=approach(rollRate,rollControl+rollDamping,7.0,dt)
   local pitchDamping=-pitchRate*0.35*qFactor
   local longitudinalMoment=pitchControl-staticPitchStability-speedStability+pitchDamping
   pitchRate=approach(pitchRate,longitudinalMoment,5.5,dt)
-  x.Sideslip=beta; x.Beta=beta
-  x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1)
+  x.Sideslip=beta; x.Beta=beta; x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1)
  end
  x.PitchRate=pitchRate; x.RollRate=rollRate; x.YawRate=yawRate; x.Yaw=yawRate
- x.Pitch=clamp((x.Pitch or 0)+pitchRate*dt,-35,35)
- x.Roll=clamp((x.Roll or 0)+rollRate*dt,-75,75)
+ x.Pitch=clamp((x.Pitch or 0)+pitchRate*dt,-35,35); x.Roll=clamp((x.Roll or 0)+rollRate*dt,-75,75)
  local groundSteeringRate=ground and ((x.GroundSteering and x.GroundSteering.YawRate) or 0) or 0
- local headingRate=ground and groundSteeringRate or yawRate
- x.Heading=wrap((x.Heading or 0)+headingRate*dt)
- local freeVerticalAccel=(lift-weight*math.cos(math.rad(x.Roll or 0)))/math.max(mass,1); local freeVerticalSpeed=(x.VerticalSpeed or 0)+freeVerticalAccel*dt
+ x.Heading=wrap((x.Heading or 0)+(ground and groundSteeringRate or yawRate)*dt)
+ -- Energy coupling: flight-path angle determines vertical component of velocity, while
+ -- longitudinal force determines airspeed. A bounded response prevents arcade-like jumps.
+ local flightPathAngle=math.rad((x.Pitch or 0)-aoa)
+ local energyVertical=math.sin(flightPathAngle)*speedMS
+ local freeVerticalAccel=(lift-weight*math.cos(math.rad(x.Roll or 0)))/math.max(mass,1)
+ local freeVerticalSpeed=(x.VerticalSpeed or 0)+freeVerticalAccel*dt
+ if not ground then freeVerticalSpeed=approach(freeVerticalSpeed,energyVertical,18,dt) end
  freeVerticalSpeed*=clamp(1-0.08*math.abs(x.Roll or 0)/45,0.6,1)
  local liftRatio=lift/math.max(weight,1)
  local canLiftOff=ground and speedKts>=90 and liftRatio>=0.92 and freeVerticalSpeed>0.5
@@ -108,8 +95,7 @@ function Physics:Step(dt)
  if not x.GroundContact then x.Altitude=clamp((x.Altitude or 0)+x.VerticalSpeed*dt,0,Config.MaxAltitude) end
  x.AirspeedTrue=x.Airspeed/math.sqrt(math.max(rho/1.225,0.15)); x.AoA=aoa; x.StallWarning=math.abs(aoa)>=stallAoA-2 and speedKts>45
  x.Lift=lift; x.Drag=drag; x.Mass=mass; x.Weight=weight; x.DynamicPressure=q
- x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor
- x.AerodynamicDamping={Yaw=0.72*qFactor,Roll=0.58*qFactor,Pitch=0.35*qFactor}
+ x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor; x.AerodynamicDamping={Yaw=0.72*qFactor,Roll=0.58*qFactor,Pitch=0.35*qFactor}
  if ground then x.TurnCoordination=1; x.Beta=x.Sideslip or 0 end
  local forward=CFrame.Angles(math.rad(-(x.Pitch or 0)),math.rad(x.Heading or 0),0).LookVector; x.Velocity=forward*(x.Airspeed*0.514444); x.Position+=x.Velocity*dt
  if x.GroundContact then x.Altitude=0 end
