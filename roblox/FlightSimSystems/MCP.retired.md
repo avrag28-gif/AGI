@@ -1,0 +1,1 @@
+`MCP.lua` is retired. Use `MCP.v02.lua` from the runtime and command router.
