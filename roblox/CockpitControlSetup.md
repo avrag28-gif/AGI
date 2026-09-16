@@ -25,5 +25,13 @@ Examples:
 | Parking brake | ParkingBrake | true/false | — |
 | Flap selector | Flap | 0..1 | — |
 | Autopilot | AP | true/false | — |
+| MCP heading selector | MCPHeading | degrees | — |
+| MCP altitude selector | MCPAltitude | feet | — |
+| MCP speed selector | MCPSpeed | knots | — |
+| MCP vertical-speed selector | MCPVerticalSpeed | feet/min | — |
+| MCP mode selector | MCPMode | HDG/LNAV/VNAV/VOR/APP/ALT_HOLD/LCHG/VS/OFF | — |
+| Autothrottle switch | AutoThrottle | true/false | — |
 
-This is an interaction contract, not a finished 3D cockpit. The next aircraft-model pass should name physical controls consistently and add the corresponding attributes/detectors.
+MCP targets are pilot selections stored in authoritative aircraft state. Navigation/autopilot systems consume those selections; MCP does not directly overwrite computed navigation guidance outputs.
+
+This is an interaction contract, not a finished 3D cockpit. The aircraft-model pass should name physical controls consistently and add the corresponding attributes/detectors.
