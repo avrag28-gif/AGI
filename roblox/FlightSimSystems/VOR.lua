@@ -1,5 +1,6 @@
--- FlightSim VOR receiver / radial guidance foundation v0.3
+-- FlightSim VOR receiver / radial guidance foundation v0.4
 -- NAV1 is a single receiver path: VOR only publishes when it owns NAV1.
+-- DME is exposed when the configured station provides it; distance remains geometric simulation data.
 local VOR={}; VOR.__index=VOR
 local function wrap(v) return (v%360+360)%360 end
 local function err(t,c) return (t-c+540)%360-180 end
@@ -9,7 +10,9 @@ local function freqMatch(a,b) return type(a)=="number" and a==a and type(b)=="nu
 function VOR.new(state) return setmetatable({state=state},VOR) end
 function VOR:SetStation(data)
  if type(data)~="table" or typeof(data.Position)~="Vector3" then return false,"invalid_vor_station" end
- local x=self.state:Get(); x.Navigation.VORStation={Position=data.Position,Frequency=tonumber(data.Frequency) or 0,Ident=tostring(data.Ident or "VOR")}; return true
+ local frequency=tonumber(data.Frequency)
+ if not frequency or frequency<108 or frequency>117.95 then return false,"invalid_vor_frequency" end
+ local x=self.state:Get(); x.Navigation.VORStation={Position=data.Position,Frequency=frequency,Ident=tostring(data.Ident or "VOR"),DME=data.DME==true}; return true
 end
 function VOR:SetCourse(course)
  local x=self.state:Get(); local n=x.Navigation; local c=tonumber(course)
@@ -26,12 +29,13 @@ function VOR:Step(dt)
   return
  end
  n.NAV1Receiver="VOR"; n.NAV1Ident=st.Ident; n.NAV1Frequency=st.Frequency
+ local distance=dist(x.Position,st.Position)
  local toStation=bearing(x.Position,st.Position)
  local radial=wrap(toStation+180)
  local course=wrap(tonumber(n.VORCourse) or radial)
  local courseError=err(course,radial)
  local angle=math.abs(err(course,toStation))
  local to=angle<=90
- n.VOR={Available=true,Distance=dist(x.Position,st.Position),BearingToStation=toStation,Radial=radial,Course=course,CourseError=courseError,TO=to,FROM=not to,Ident=st.Ident,Frequency=st.Frequency}
+ n.VOR={Available=true,Distance=distance,DMEDistanceNM=st.DME and distance/1852 or nil,DMEAvailable=st.DME==true,BearingToStation=toStation,Radial=radial,Course=course,CourseError=courseError,TO=to,FROM=not to,Ident=st.Ident,Frequency=st.Frequency}
 end
 return VOR
