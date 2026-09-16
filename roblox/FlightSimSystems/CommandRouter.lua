@@ -1,10 +1,10 @@
--- FlightSim server command router v1.6
+-- FlightSim server command router v1.7
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
-local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true}
+local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true}
 local CONTROL_AXES={Aileron=true,Elevator=true,Rudder=true}
 local function finite(n) return type(n)=="number" and n==n and n>-math.huge and n<math.huge end
-local function engineIndex(v) local i=tonumber(v); if i~=1 and i~=2 then return nil end; return i end
+local function engineIndex(v) local i=tonumber(v); if i~=1 and i~=2 then return nil end return i end
 function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,lastCommand={}},CommandRouter) end
 function CommandRouter:_rateOK(p) local now=os.clock(); local key=p.UserId; local r=self.lastCommand[key]; if not r then self.lastCommand[key]={t=now,n=1}; return true end; if now-r.t>=1 then r.t=now; r.n=1; return true end; if r.n>=(tonumber(Config.CommandRateLimit) or 30) then return false end; r.n+=1; return true end
 function CommandRouter:Handle(player,id,command,a,b)
@@ -15,9 +15,7 @@ function CommandRouter:Handle(player,id,command,a,b)
  if command=="Battery" then x.Electrical.Battery=a==true
  elseif command=="ExternalPower" then x.Electrical.ExternalPower=a==true
  elseif command=="APU" then x.Electrical.APU=a==true
- elseif command=="FuelPump" then
-  local p=string.upper(tostring(a)); local on=b==true
-  if p=="LEFT" then x.FuelSystem.LeftPumpSwitch=on elseif p=="CENTER" then x.FuelSystem.CenterPumpSwitch=on elseif p=="RIGHT" then x.FuelSystem.RightPumpSwitch=on else return false,"invalid_fuel_pump" end
+ elseif command=="FuelPump" then local p=string.upper(tostring(a)); local on=b==true; if p=="LEFT" then x.FuelSystem.LeftPumpSwitch=on elseif p=="CENTER" then x.FuelSystem.CenterPumpSwitch=on elseif p=="RIGHT" then x.FuelSystem.RightPumpSwitch=on else return false,"invalid_fuel_pump" end
  elseif command=="FuelCrossfeed" then x.FuelSystem.CrossfeedSwitch=a==true
  elseif command=="EngineFuelFeed" then local i=engineIndex(a); local source=string.upper(tostring(b)); if not i then return false,"invalid_engine" end; if source~="AUTO" and source~="LEFT" and source~="CENTER" and source~="RIGHT" then return false,"invalid_fuel_source" end; x.FuelSystem.EngineFeed[i]=source
  elseif command=="EngineStarter" or command=="EngineFuel" or command=="EngineIgnition" then local i=engineIndex(a); if not i then return false,"invalid_engine" end; local e=x.Engines[i]; if command=="EngineStarter" then e.Starter=b==true elseif command=="EngineFuel" then e.FuelOn=b==true else e.Ignition=b==true end
@@ -45,6 +43,7 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="WeatherRadar" then x.Avionics.WeatherRadarEnabled=a==true
  elseif command=="MCPHeading" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetHeading(a)
  elseif command=="MCPAltitude" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetAltitude(a)
+ elseif command=="MCPspeed" then local v=tonumber(a); if not finite(v) then return false,"invalid_mcp_speed" end; x.Autopilot.TargetSpeed=math.clamp(v,60,350)
  elseif command=="MCPMode" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetMode(a)
  elseif command=="ApproachRunway" then local ap=self.getApproach and self.getApproach(id); if not ap then return false,"approach_not_found" end; return ap:SetRunway(a)
  elseif command=="Trim" then local v=tonumber(a); if not finite(v) then return false,"invalid_trim" end; x.Controls.Trim=math.clamp(v,-1,1) end
