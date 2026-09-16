@@ -1,9 +1,9 @@
--- FlightSim autopilot / VOR / ILS / VNAV speed-aware controller v1.1
+-- FlightSim autopilot / VOR / ILS / VNAV controller v1.2
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function err(t,c) return (t-c+540)%360-180 end
-local function slew(v,target,rate,dt) local d=target-v; local step=rate*math.max(0,dt); if math.abs(d)<=step then return target end; return v+(d>0 and step or -step) end
+local function slew(v,target,rate,dt) local d=target-v; local step=rate*math.max(0,dt); if math.abs(d)<=step then return target end return v+(d>0 and step or -step) end
 local function finite(v) return type(v)=="number" and v==v and v~=math.huge and v~=-math.huge end
 local function firstFinite(...) for i=1,select("#",...) do local v=select(i,...); if finite(v) then return v end end end
 function Autopilot.new(state) return setmetatable({state=state,bankCommand=0,pitchCommand=0},Autopilot) end
@@ -15,7 +15,8 @@ function Autopilot:Step(dt)
   nav.Mode="HDG"; v.Mode="OFF"; if ils then ils.LocalizerCaptured=false; ils.GlideSlopeCaptured=false end
   ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false; ap.Mode="GO_AROUND"
   local targetH=finite(ap.GoAroundHeading) and ap.GoAroundHeading%360 or heading; local baseAltitude=finite(ap.GoAroundAltitude) and ap.GoAroundAltitude or altitude; local targetA=math.max(baseAltitude,altitude+1000)
-  ap.TargetHeading=targetH; ap.TargetAltitude=targetA; local he=err(targetH,heading); local ae=targetA-altitude
+  ap.TargetHeading=targetH; ap.TargetAltitude=targetA
+  local he=err(targetH,heading); local ae=targetA-altitude
   self.bankCommand=slew(self.bankCommand,clamp(he/30,-0.65,0.65),1.8,dt); self.pitchCommand=slew(self.pitchCommand,clamp(ae/1200,-0.40,0.40),1.5,dt)
   ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand
   return true
