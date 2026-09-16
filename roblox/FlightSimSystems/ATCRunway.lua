@@ -1,15 +1,20 @@
--- FlightSim runway clearance coordinator v0.2
+-- FlightSim runway clearance coordinator v0.3
 -- Coordinates runway reservations with deterministic sequencing; not real-world ATC separation.
 local ATCRunway={}; ATCRunway.__index=ATCRunway
 local function norm(v) return string.upper(tostring(v or "")):gsub("%s+"," "):gsub("^%s+",""):gsub("%s+$","") end
 local function ensure(x)
  x.ATC=x.ATC or {}; x.ATC.Runway=x.ATC.Runway or {Clearance=nil,ReservationState="VACANT",Runway=nil,Sequence=0,LastResult="",Queued=false}; return x.ATC.Runway
 end
+local function holdPosition(x)
+ local d=x.ATCDecision
+ return type(d)=="table" and norm(d.Instruction)=="HOLD_POSITION"
+end
 function ATCRunway.new(state,traffic,aircraftId,callsign,sequencer) return setmetatable({state=state,traffic=traffic,aircraftId=norm(aircraftId),callsign=norm(callsign),sequencer=sequencer},ATCRunway) end
 function ATCRunway:SetIdentity(aircraftId,callsign) self.aircraftId=norm(aircraftId); self.callsign=norm(callsign); return self.aircraftId~="" and self.callsign~="" end
 function ATCRunway:_request(runway,operation)
  local x=self.state:Get(); local r=ensure(x); if runway=="" then return false,"invalid_runway" end
  if not self.traffic:GetRunway(runway) then return false,"runway_not_registered" end
+ if holdPosition(x) then r.LastResult="HOLD_POSITION"; return false,"hold_position" end
  if self.sequencer then
   local ok,entry=self.sequencer:Enqueue(runway,self.aircraftId,self.callsign,operation); if not ok then r.LastResult=entry; return false,entry end
   r.Runway=runway; r.Queued=true; r.ReservationState="HOLD_SHORT"; r.Sequence=entry.Sequence; r.LastResult="QUEUED"; r.Clearance="REQUEST QUEUED "..operation.." "..runway; return true,r.Clearance
@@ -22,10 +27,13 @@ function ATCRunway:RequestTakeoff(runwayId) return self:_request(norm(runwayId),
 function ATCRunway:RequestLanding(runwayId) return self:_request(norm(runwayId),"LANDING") end
 function ATCRunway:EnterRunway()
  local x=self.state:Get(); local r=ensure(x); if not r.Runway then return false,"no_runway_reservation" end
+ if holdPosition(x) then r.LastResult="HOLD_POSITION"; return false,"hold_position" end
  if r.Queued then
+  if not self.sequencer then r.LastResult="sequencer_unavailable"; return false,"sequencer_unavailable" end
   local ok,detail=self.sequencer:GrantNext(r.Runway); if not ok then r.LastResult=detail; return false,detail end
-  r.Queued=false
+  r.Queued=false; r.ReservationState="RESERVED"
  end
+ if r.ReservationState~="RESERVED" then r.LastResult="runway_not_reserved"; return false,"runway_not_reserved" end
  local ok,detail=self.traffic:SetOccupied(r.Runway,self.aircraftId); if not ok then r.LastResult=detail; return false,detail end
  r.ReservationState="OCCUPIED"; r.LastResult="RUNWAY_OCCUPIED"; return true
 end
@@ -37,6 +45,7 @@ function ATCRunway:Release()
 end
 function ATCRunway:Step(dt)
  local x=self.state:Get(); local r=ensure(x); if not r.Queued or not self.sequencer or not r.Runway then return end
+ if holdPosition(x) then r.LastResult="HOLD_POSITION"; return end
  local ok,reason=self.sequencer:CanProceed(r.Runway,self.aircraftId); if ok then r.LastResult="NEXT_IN_SEQUENCE" else r.LastResult=reason end
 end
 return ATCRunway
