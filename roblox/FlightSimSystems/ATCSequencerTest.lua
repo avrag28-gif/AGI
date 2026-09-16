@@ -1,4 +1,4 @@
--- FlightSim ATC sequencing contract tests v0.1
+-- FlightSim ATC sequencing contract tests v0.2
 local ATCTraffic=require(script.Parent.ATCTraffic)
 local ATCSequencer=require(script.Parent.ATCSequencer)
 local Test={}
@@ -15,7 +15,11 @@ function Test.Run()
  allowed,reason=seq:GrantNext("27"); check(not allowed and reason=="runway_reserved","occupied reservation was bypassed")
  traffic:Release("27","AC1")
  ok,e=seq:GrantNext("27"); check(ok and e.AircraftId=="AC2","second reservation failed")
- check(not seq:Enqueue("27","AC2","FS1002","TAKEOFF"),"duplicate queue accepted")
+ check(seq:QueueLength("27")==0,"second queue entry was not consumed")
+ check(not seq:Enqueue("27","AC2","FS1002","TAKEOFF"),"duplicate occupied aircraft accepted")
+ check(not seq:Enqueue("27","AC2","FS1002","LANDING"),"same occupied aircraft accepted under another operation")
+ traffic:Release("27","AC2")
+ ok,e=seq:Enqueue("27","AC2","FS1002","LANDING"); check(ok,"released aircraft could not be queued again")
  return true
 end
 return Test
