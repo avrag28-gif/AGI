@@ -1,11 +1,11 @@
--- FlightSim server command router v1.9
+-- FlightSim server command router v2.0
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
-local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,MCPSpeed=true,MCPVerticalSpeed=true,AutoThrottle=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true}
+local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,MCPSpeed=true,MCPVerticalSpeed=true,AutoThrottle=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true,ATCCallsign=true,ATCPhase=true,ATCRequest=true,ATCReadback=true}
 local CONTROL_AXES={Aileron=true,Elevator=true,Rudder=true}
 local function finite(n) return type(n)=="number" and n==n and n>-math.huge and n<math.huge end
 local function engineIndex(v) local i=tonumber(v); if i~=1 and i~=2 then return nil end return i end
-function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach,getAutoThrottle) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,getAutoThrottle=getAutoThrottle,lastCommand={}},CommandRouter) end
+function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach,getAutoThrottle,getATC) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,getAutoThrottle=getAutoThrottle,getATC=getATC,lastCommand={}},CommandRouter) end
 function CommandRouter:_rateOK(p) local now=os.clock(); local key=p.UserId; local r=self.lastCommand[key]; if not r then self.lastCommand[key]={t=now,n=1}; return true end; if now-r.t>=1 then r.t=now; r.n=1; return true end; if r.n>=(tonumber(Config.CommandRateLimit) or 30) then return false end; r.n+=1; return true end
 function CommandRouter:Handle(player,id,command,a,b)
  if type(command)~="string" or not ALLOWED[command] then return false,"command_not_allowed" end
@@ -27,15 +27,7 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="ToeBrake" then local v=tonumber(a); if not finite(v) then return false,"invalid_toe_brake" end; x.Brakes.ToeBrake=math.clamp(v,0,1)
  elseif command=="NoseWheelSteering" then local v=tonumber(a); if not finite(v) then return false,"invalid_nose_wheel_steering" end; x.Controls.NoseWheelSteering=math.clamp(v,-1,1)
  elseif command=="ReverseThrust" then local v=tonumber(a); if not finite(v) then return false,"invalid_reverse_thrust" end; x.ReverseThrust=math.clamp(v,0,1); for i=1,2 do x.Engines[i].Reverse=x.ReverseThrust>0 end
- elseif command=="GoAround" then
-  local at=self.getAutoThrottle and self.getAutoThrottle(id)
-  if a==true then
-   x.Autopilot.GoAround=true; x.Landing.GoAround=true; x.Navigation.Mode="HDG"; x.VNAV.Mode="OFF"; x.Autopilot.GoAroundHeading=x.Heading; x.Autopilot.GoAroundAltitude=math.max(x.Autopilot.TargetAltitude or 0,x.Altitude+1000); x.Autopilot.TargetHeading=x.Heading; x.Autopilot.TargetAltitude=x.Autopilot.GoAroundAltitude
-   if at then at:GoAround() end
-  else
-   x.Autopilot.GoAround=false; x.Landing.GoAround=false; x.Autopilot.GoAroundHeading=nil; x.Autopilot.GoAroundAltitude=nil
-   if at then at:SetEnabled(false) end
-  end
+ elseif command=="GoAround" then local at=self.getAutoThrottle and self.getAutoThrottle(id); if a==true then x.Autopilot.GoAround=true; x.Landing.GoAround=true; x.Navigation.Mode="HDG"; x.VNAV.Mode="OFF"; x.Autopilot.GoAroundHeading=x.Heading; x.Autopilot.GoAroundAltitude=math.max(x.Autopilot.TargetAltitude or 0,x.Altitude+1000); x.Autopilot.TargetHeading=x.Heading; x.Autopilot.TargetAltitude=x.Autopilot.GoAroundAltitude; if at then at:GoAround() end else x.Autopilot.GoAround=false; x.Landing.GoAround=false; x.Autopilot.GoAroundHeading=nil; x.Autopilot.GoAroundAltitude=nil; if at then at:SetEnabled(false) end end
  elseif command=="VORCourse" then local c=tonumber(a); if not finite(c) then return false,"invalid_vor_course" end; x.Navigation.VORCourse=(c%360+360)%360
  elseif command=="AP" then x.Autopilot.Enabled=a==true
  elseif command=="APTarget" then local alt,hdg=tonumber(a),tonumber(b); if alt and not finite(alt) then return false,"invalid_altitude" end; if hdg and not finite(hdg) then return false,"invalid_heading" end; if alt then x.Autopilot.TargetAltitude=math.clamp(alt,0,60000) end; if hdg then x.Autopilot.TargetHeading=(hdg%360+360)%360 end
@@ -56,7 +48,11 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="MCPMode" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetMode(a)
  elseif command=="AutoThrottle" then local at=self.getAutoThrottle and self.getAutoThrottle(id); if not at then return false,"autothrottle_not_found" end; return at:SetEnabled(a==true)
  elseif command=="ApproachRunway" then local ap=self.getApproach and self.getApproach(id); if not ap then return false,"approach_not_found" end; return ap:SetRunway(a)
- elseif command=="Trim" then local v=tonumber(a); if not finite(v) then return false,"invalid_trim" end; x.Controls.Trim=math.clamp(v,-1,1) end
+ elseif command=="Trim" then local v=tonumber(a); if not finite(v) then return false,"invalid_trim" end; x.Controls.Trim=math.clamp(v,-1,1)
+ elseif command=="ATCCallsign" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:SetCallsign(a)
+ elseif command=="ATCPhase" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:SetPhase(a)
+ elseif command=="ATCRequest" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:RequestClearance(a)
+ elseif command=="ATCReadback" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:Readback(a) end
  return true
 end
 return CommandRouter
