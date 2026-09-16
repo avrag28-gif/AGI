@@ -1,4 +1,4 @@
--- FlightSim autopilot / VOR / ILS capture / go-around foundation v0.8
+-- FlightSim autopilot / VOR / ILS / vertical mode controller v0.9
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -20,25 +20,45 @@ function Autopilot:Step(dt)
   self.bankCommand=slew(self.bankCommand,clamp(he/30,-0.65,0.65),1.8,dt); self.pitchCommand=slew(self.pitchCommand,clamp(ae/1200,-0.40,0.40),1.5,dt)
   ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand; return true
  end
- local targetH=firstFinite(nav.CommandHeading,ap.TargetHeading,heading)%360
- local targetA=firstFinite(v.Mode=="VNAV" and v.TargetAltitude or nil,nav.CommandAltitude,ap.TargetAltitude,altitude)
  local mode=nav.Mode
  if mode=="APP" and ils and ils.Available and ils.LocalizerValid and nav.NAV1Receiver=="ILS" then
-  ap.ILSLocalizerCaptured=ils.LocalizerCaptured==true; ap.ILSGlideSlopeCaptured=ils.GlideSlopeCaptured==true and ap.ILSLocalizerCaptured; targetH=firstFinite(nav.CommandHeading,heading)%360
-  if ils.GlideSlopeValid then targetA=firstFinite(nav.CommandAltitude,ils.DesiredAltitude,targetA) end
+  ap.ILSLocalizerCaptured=ils.LocalizerCaptured==true; ap.ILSGlideSlopeCaptured=ils.GlideSlopeCaptured==true and ap.ILSLocalizerCaptured
   if ap.ILSGlideSlopeCaptured then ap.Mode="APP_GS" elseif ap.ILSLocalizerCaptured then ap.Mode="APP_LOC" else ap.Mode="APP_ARMED" end
- elseif mode=="VOR" and vor and vor.Available and nav.NAV1Receiver=="VOR" then
-  ap.Mode="VOR"
+ elseif mode=="VOR" and vor and vor.Available and nav.NAV1Receiver=="VOR" then ap.Mode="VOR"
  elseif v.Mode=="VNAV" then ap.Mode="VNAV"
  elseif mode=="LNAV" then ap.Mode="LNAV"
  elseif mode=="ALT_HOLD" then ap.Mode="ALT_HOLD"
  elseif mode=="LCHG" then ap.Mode="LCHG"
  elseif mode=="VS" then ap.Mode="VS"
  else ap.Mode="HDG" end
- local he=err(targetH,heading); local altitudeError=targetA-altitude; local app=ap.Mode=="APP_GS" or ap.Mode=="APP_LOC" or (mode=="APP" and ils and ils.Available)
- local bankLimit=app and 0.75 or 0.65; local bankGain=app and 1/12 or 1/30; local targetBank=clamp(he*bankGain,-bankLimit,bankLimit)
- local pitchGain=(app and ap.ILSGlideSlopeCaptured) and 1/500 or 1/1200; local pitchLimit=(app and ap.ILSGlideSlopeCaptured) and 0.32 or 0.45; local targetPitch=clamp(altitudeError*pitchGain,-pitchLimit,pitchLimit)
- if ap.Mode=="VS" then targetPitch=clamp((tonumber(ap.TargetVerticalSpeed) or 0)/2500,-pitchLimit,pitchLimit) elseif ap.Mode=="ALT_HOLD" and math.abs(altitudeError)<40 then targetPitch=clamp(-(tonumber(x.VerticalSpeed) or 0)/1800,-0.20,0.20) end
- self.bankCommand=slew(self.bankCommand,targetBank,2.2,dt); self.pitchCommand=slew(self.pitchCommand,targetPitch,1.8,dt); ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand; return true
+ local targetH=firstFinite(nav.CommandHeading,ap.TargetHeading,heading)%360
+ local targetA=firstFinite(v.Mode=="VNAV" and v.TargetAltitude or nil,nav.CommandAltitude,ap.TargetAltitude,altitude)
+ if ap.Mode=="APP_GS" or ap.Mode=="APP_LOC" or ap.Mode=="APP_ARMED" then targetH=firstFinite(nav.CommandHeading,heading)%360 end
+ local he=err(targetH,heading)
+ local bankLimit=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 0.75 or 0.65
+ local bankGain=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 1/12 or 1/30
+ local targetBank=clamp(he*bankGain,-bankLimit,bankLimit)
+ local altitudeError=targetA-altitude
+ local pitchLimit=(ap.Mode=="APP_GS") and 0.32 or 0.45
+ local targetPitch
+ if ap.Mode=="VS" then
+  targetPitch=clamp((tonumber(ap.TargetVerticalSpeed) or 0)/2500,-pitchLimit,pitchLimit)
+ elseif ap.Mode=="ALT_HOLD" then
+  targetPitch=clamp(altitudeError/900,-0.25,0.25)
+ elseif ap.Mode=="LCHG" then
+  -- Level-change foundation: use selected altitude as the vertical target while
+  -- airspeed/thrust scheduling remains owned by the flight/engine controllers.
+  targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit)
+ elseif ap.Mode=="VNAV" then
+  targetPitch=clamp((v.CommandVerticalSpeed or 0)/2500,-pitchLimit,pitchLimit)
+ elseif ap.Mode=="APP_GS" then
+  local gsError=finite(ils and ils.GlideSlopeError) and ils.GlideSlopeError or 0
+  targetPitch=clamp(gsError/3,-pitchLimit,pitchLimit)
+ else
+  targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit)
+ end
+ self.bankCommand=slew(self.bankCommand,targetBank,2.2,dt); self.pitchCommand=slew(self.pitchCommand,targetPitch,1.8,dt)
+ ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand
+ return true
 end
 return Autopilot
