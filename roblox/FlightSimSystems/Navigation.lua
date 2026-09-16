@@ -1,4 +1,4 @@
--- FlightSim navigation / LNAV / VOR / ILS guidance v0.7
+-- FlightSim navigation / LNAV / VOR / ILS guidance v0.8
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -18,7 +18,7 @@ function Navigation:Step(dt)
   local prev=route[i-1]; local pos=x.Position
   nav.DistanceToWaypoint=distance2D(pos,wp.Position); nav.BearingToWaypoint=bearing(pos,wp.Position)
   nav.CrossTrackError=(prev and typeof(prev.Position)=="Vector3") and crossTrack(prev.Position,wp.Position,pos) or 0
-  local capture=clamp(tonumber(wp.CaptureRadius) or 2500,250,10000); local nextWp=route[i+1]
+  local capture=clamp(tonumber(wp.CaptureRadius) or 2500,250,10000)
   if nav.DistanceToWaypoint<=capture and i<#route then
    nav.ActiveWaypoint=i+1; wp=route[nav.ActiveWaypoint]; nav.DistanceToWaypoint=distance2D(pos,wp.Position); nav.BearingToWaypoint=bearing(pos,wp.Position); prev=route[nav.ActiveWaypoint-1]; nav.CrossTrackError=(prev and typeof(prev.Position)=="Vector3") and crossTrack(prev.Position,wp.Position,pos) or 0
   elseif nav.DistanceToWaypoint<=capture and i==#route then nav.RouteComplete=true end
@@ -26,23 +26,22 @@ function Navigation:Step(dt)
   if nav.Mode=="LNAV" then
    local pathCourse=(prev and typeof(prev.Position)=="Vector3") and segmentCourse(prev.Position,wp.Position) or desired; local xte=tonumber(nav.CrossTrackError) or 0; local intercept=clamp(-xte*0.02,-30,30); if nav.DistanceToWaypoint<capture then intercept=intercept*(nav.DistanceToWaypoint/capture) end; desired=wrap360(pathCourse+intercept)
   elseif nav.Mode=="VOR" then
-   local vor=nav.NAV1Signal
-   if nav.NAV1Receiver=="VOR" and vor and vor.Available then desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8) else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
+   local vor=nav.NAV1Signal; if nav.NAV1Receiver=="VOR" and vor and vor.Available then desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8) else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
   elseif nav.Mode=="APP" then
    local ils=nav.NAV1Signal
    if nav.NAV1Receiver=="ILS" and ils and ils.Available and ils.LocalizerValid then
-    local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28
-    desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or x.Heading)-intercept)
+    local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28; desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or x.Heading)-intercept)
     if ils.GlideSlopeValid and finite(ils.DesiredAltitude) then nav.CommandAltitude=ils.DesiredAltitude end
    else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
   elseif nav.Mode=="HDG" then desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
   nav.CommandHeading=desired
  else
-  nav.CommandHeading=wrap360(x.Autopilot.TargetHeading or x.Heading); nav.RouteComplete=#route>0; nav.DistanceToWaypoint=0; nav.BearingToWaypoint=nav.CommandHeading; nav.CrossTrackError=0
+  nav.CommandHeading=wrap360(x.Autopilot.TargetHeading or x.Heading); nav.DistanceToWaypoint=0; nav.BearingToWaypoint=nav.CommandHeading; nav.CrossTrackError=0
+  nav.RouteComplete=(#route==0) or nav.RouteComplete==true
  end
  nav.HeadingError=headingError(nav.CommandHeading,x.Heading)
- if nav.Mode=="HDG" or nav.Mode=="LNAV" or nav.Mode=="VOR" then nav.CommandAltitude=nil end
+ if nav.Mode=="HDG" or nav.Mode=="LNAV" or nav.Mode=="VOR" then nav.CommandAltitude=nil; nav.CommandVerticalSpeed=nil end
  return nav
 end
-function Navigation:SetRoute(route) local x=self.state:Get(); x.Navigation.Route=route or {}; x.Navigation.ActiveWaypoint=1; x.Navigation.RouteComplete=false end
+function Navigation:SetRoute(route) local x=self.state:Get(); x.Navigation.Route=route or {}; x.Navigation.ActiveWaypoint=1; x.Navigation.RouteComplete=(#(route or {})==0) end
 return Navigation
