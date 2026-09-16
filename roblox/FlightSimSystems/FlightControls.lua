@@ -1,5 +1,5 @@
--- FlightSim flight-control system v0.5
--- Server-authoritative control-surface scheduling and failure-aware authority.
+-- FlightSim flight-control system v0.6
+-- Server-authoritative control-surface scheduling, failure-aware authority and hydraulic demand reporting.
 -- Values are simulation approximations, not certified aircraft data.
 local FlightControls={}; FlightControls.__index=FlightControls
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -13,30 +13,16 @@ function FlightControls:Step(dt)
  local authority=clamp(hydraulic*dynamicAuthority,0,1)
  local ground=x.GroundContact==true
  x.Surface=x.Surface or {Aileron=0,Elevator=0,Rudder=0,Flap=0}
- local ail=clamp(tonumber(c.Aileron) or 0,-1,1)
- local ele=clamp(tonumber(c.Elevator) or 0,-1,1)
- if ap.Enabled then
-  ail=clamp(tonumber(ap.CommandAileron) or ail,-1,1)
-  ele=clamp(tonumber(ap.CommandElevator) or ele,-1,1)
- end
- local trimEffect=clamp((x.TrimPitch or 0)/10,-0.45,0.45)
- ele=clamp(ele+trimEffect,-1,1)
- local groundAileron=ground and clamp(speed/45,0,1) or 1
- local groundElevator=ground and clamp((speed-35)/45,0.12,1) or 1
- local groundRudder=ground and clamp((speed-8)/28,0,1) or 1
- local ailTarget=ail*authority*groundAileron*clamp(failures.AileronAuthority or 1,0,1)
- local eleTarget=ele*authority*groundElevator*clamp(failures.ElevatorAuthority or 1,0,1)
- local rudTarget=clamp(c.Rudder or 0,-1,1)*authority*groundRudder*clamp(failures.RudderAuthority or 1,0,1)
- x.Surface.Aileron=approach(x.Surface.Aileron,ailTarget,9,dt)
- x.Surface.Elevator=approach(x.Surface.Elevator,eleTarget,7,dt)
- x.Surface.Rudder=approach(x.Surface.Rudder,rudTarget,6,dt)
- local flapTarget=clamp(c.Flap or 0,0,1)
- x.Surface.Flap=approach(x.Surface.Flap,flapTarget,2,dt)
- x.ControlFeel=x.ControlFeel or {}
- x.ControlFeel.HydraulicAuthority=hydraulic
- x.ControlFeel.DynamicAuthority=dynamicAuthority
- x.ControlFeel.AileronAuthority=groundAileron*clamp(failures.AileronAuthority or 1,0,1)
- x.ControlFeel.ElevatorAuthority=groundElevator*clamp(failures.ElevatorAuthority or 1,0,1)
- x.ControlFeel.RudderAuthority=groundRudder*clamp(failures.RudderAuthority or 1,0,1)
+ local ail=clamp(tonumber(c.Aileron) or 0,-1,1); local ele=clamp(tonumber(c.Elevator) or 0,-1,1)
+ if ap.Enabled then ail=clamp(tonumber(ap.CommandAileron) or ail,-1,1); ele=clamp(tonumber(ap.CommandElevator) or ele,-1,1) end
+ ele=clamp(ele+clamp((x.TrimPitch or 0)/10,-0.45,0.45),-1,1)
+ local groundAileron=ground and clamp(speed/45,0,1) or 1; local groundElevator=ground and clamp((speed-35)/45,0.12,1) or 1; local groundRudder=ground and clamp((speed-8)/28,0,1) or 1
+ local ailTarget=ail*authority*groundAileron*clamp(failures.AileronAuthority or 1,0,1); local eleTarget=ele*authority*groundElevator*clamp(failures.ElevatorAuthority or 1,0,1); local rudTarget=clamp(c.Rudder or 0,-1,1)*authority*groundRudder*clamp(failures.RudderAuthority or 1,0,1)
+ x.Surface.Aileron=approach(x.Surface.Aileron,ailTarget,9,dt); x.Surface.Elevator=approach(x.Surface.Elevator,eleTarget,7,dt); x.Surface.Rudder=approach(x.Surface.Rudder,rudTarget,6,dt)
+ x.Surface.Flap=approach(x.Surface.Flap,clamp(c.Flap or 0,0,1),2,dt)
+ x.ControlFeel=x.ControlFeel or {}; x.ControlFeel.HydraulicAuthority=hydraulic; x.ControlFeel.DynamicAuthority=dynamicAuthority
+ x.ControlFeel.AileronAuthority=groundAileron*clamp(failures.AileronAuthority or 1,0,1); x.ControlFeel.ElevatorAuthority=groundElevator*clamp(failures.ElevatorAuthority or 1,0,1); x.ControlFeel.RudderAuthority=groundRudder*clamp(failures.RudderAuthority or 1,0,1)
+ local surfaceActivity=math.max(math.abs(ailTarget),math.abs(eleTarget),math.abs(rudTarget))
+ x.HydraulicDemand=x.HydraulicDemand or {}; x.HydraulicDemand.FlightControls=clamp(surfaceActivity,0,1)
 end
 return FlightControls
