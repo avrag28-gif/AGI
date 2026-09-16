@@ -1,0 +1,1 @@
+MCP guidance ownership was refactored in the working plan: MCP should own selected targets/modes and must not write Navigation.Command* outputs. The existing MCP.lua remains unchanged until its concurrent-write conflict is resolved safely.
