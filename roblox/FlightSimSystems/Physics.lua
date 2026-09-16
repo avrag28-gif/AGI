@@ -1,4 +1,4 @@
--- FlightSim aerodynamic / ground dynamics foundation v1.6
+-- FlightSim aerodynamic / ground dynamics foundation v1.7
 -- Game simulation model; coefficients are tunable approximations, not certified aircraft data.
 local Config=require(script.Parent.Config)
 local Physics={}; Physics.__index=Physics
@@ -11,13 +11,26 @@ function Physics:Step(dt)
  local speedKts=math.max(x.Airspeed or 0,0); local speedMS=speedKts*0.514444
  local mass=90000+math.max(0,x.Fuel.Total or 0)*0.8; local weight=mass*9.80665
  local throttle=(clamp(x.Throttle[1] or 0,0,1)+clamp(x.Throttle[2] or 0,0,1))*0.5
- local thrust=(e1.Thrust or 0)+(e2.Thrust or 0)
+ local leftThrust=math.max(0,e1.Thrust or 0); local rightThrust=math.max(0,e2.Thrust or 0)
+ local thrust=leftThrust+rightThrust
  local reverse=clamp(x.ReverseThrust or 0,0,1)
  local flap=clamp(s.Flap or 0,0,1)
  local gear=x.GearPosition or {}; local gearExposed=clamp(((gear.Nose or 0)+(gear.Left or 0)+(gear.Right or 0))/3,0,1)
  local brakePressure=clamp((x.Brakes and x.Brakes.BrakePressure) or 0,0,1)
  local leftBrake=clamp((x.Brakes and x.Brakes.LeftPressure) or brakePressure,0,1)
  local rightBrake=clamp((x.Brakes and x.Brakes.RightPressure) or brakePressure,0,1)
+ -- Engine thrust is now part of the aircraft force/moment model. A stopped or failed engine
+ -- contributes zero thrust, so a single-engine condition naturally creates asymmetric yaw.
+ local thrustAsymmetry=(rightThrust-leftThrust)/math.max(thrust,1)
+ local engineOut=leftThrust<thrust*Config.EngineOutThreshold or rightThrust<thrust*Config.EngineOutThreshold
+ local rawYawMoment=(rightThrust-leftThrust)*Config.EngineLateralArm
+ local engineYawMoment=rawYawMoment*Config.EngineYawMomentGain
+ x.EngineIntegration.TotalThrust=thrust
+ x.EngineIntegration.LeftThrust=leftThrust
+ x.EngineIntegration.RightThrust=rightThrust
+ x.EngineIntegration.ThrustAsymmetry=clamp(thrustAsymmetry,-1,1)
+ x.EngineIntegration.EngineOut=engineOut and thrust>0
+ x.EngineIntegration.YawMoment=engineYawMoment
  local wingArea=125.0; local rho=1.225*math.exp(-math.max(x.Altitude or 0,0)/8500)
  local trim=clamp(x.TrimPitch or 0,-8,8); local aoa=clamp((x.Pitch or 0)-trim,-20,30)
  local flapLift=0.52*flap+0.20*flap*flap; local flapDrag=0.025*flap+0.035*flap*flap
@@ -52,7 +65,7 @@ function Physics:Step(dt)
  local referenceSpeed=clamp(125+flap*20,85,180)
  local speedError=(speedKts-referenceSpeed)/35
  local speedStability=clamp(speedError*0.65,-3.5,3.5)
- local pitchRate=x.PitchRate or 0; local rollRate=x.RollRate or 0; local yawRate=x.YawRate or x.Yaw or 0
+ local pitchRate=x.PitchRate or 0; local rollRate=x.RollRate or 0; local yawRate=x.YawRate or 0
  if ground then
   local groundYaw=(x.GroundSteering and x.GroundSteering.YawRate) or 0
   yawRate=groundYaw
@@ -68,7 +81,10 @@ function Physics:Step(dt)
   local betaRate=(desiredBeta-beta)*2.8-beta*0.55-yawRate*0.045
   beta=clamp(beta+betaRate*dt,-12,12)
   local weathercock=-beta*0.95; local yawDamping=-yawRate*0.72; local adverseYaw=-aileron*1.4*qFactor*hydraulicAuthority
-  local targetYawRate=turnRate*0.32+rudderControl+weathercock+yawDamping+adverseYaw
+  -- Engine-out yaw is a physical disturbance; rudder input counters it rather than the
+  -- simulator directly forcing the heading back to target.
+  local engineYaw=engineYawMoment
+  local targetYawRate=turnRate*0.32+rudderControl+weathercock+yawDamping+adverseYaw+engineYaw
   yawRate=approach(yawRate,targetYawRate,5.5,dt)
   local rollDamping=-rollRate*0.58*qFactor
   rollRate=approach(rollRate,rollControl+rollDamping,7.0,dt)
@@ -81,8 +97,6 @@ function Physics:Step(dt)
  x.Pitch=clamp((x.Pitch or 0)+pitchRate*dt,-35,35); x.Roll=clamp((x.Roll or 0)+rollRate*dt,-75,75)
  local groundSteeringRate=ground and ((x.GroundSteering and x.GroundSteering.YawRate) or 0) or 0
  x.Heading=wrap((x.Heading or 0)+(ground and groundSteeringRate or yawRate)*dt)
- -- Energy coupling: flight-path angle determines vertical component of velocity, while
- -- longitudinal force determines airspeed. A bounded response prevents arcade-like jumps.
  local flightPathAngle=math.rad((x.Pitch or 0)-aoa)
  local energyVertical=math.sin(flightPathAngle)*speedMS
  local freeVerticalAccel=(lift-weight*math.cos(math.rad(x.Roll or 0)))/math.max(mass,1)
