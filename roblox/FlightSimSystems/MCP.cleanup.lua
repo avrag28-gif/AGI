@@ -1,0 +1,1 @@
+-- cleanup staging artifact; replaced by MCP.lua via Git tree update
