@@ -1,29 +1,29 @@
--- FlightSim authoritative failure-state schema v0.2
+-- FlightSim authoritative failure-state schema v0.3
 -- FailureSchema owns shape/defaults only; Failures.lua derives FailureEffects, while subsystems own physical state.
 local FailureSchema={}
+local function bool(v) return v==true end
 local function apply(x)
  x.Failures=x.Failures or {}
- x.Failures.Engines=x.Failures.Engines or {[1]={Active=false,Reason=nil,Fire=false},[2]={Active=false,Reason=nil,Fire=false}}
- for i=1,2 do x.Failures.Engines[i]=x.Failures.Engines[i] or {Active=false,Reason=nil,Fire=false}; x.Failures.Engines[i].Active=x.Failures.Engines[i].Active==true; x.Failures.Engines[i].Fire=x.Failures.Engines[i].Fire==true end
- x.Failures.Hydraulic=x.Failures.Hydraulic or {A=false,B=false}
- x.Failures.Electrical=x.Failures.Electrical or {Bus1=false,Bus2=false,APU=false}
- x.Failures.FlightControls=x.Failures.FlightControls or {Aileron=false,Elevator=false,Rudder=false}
- x.Failures.FireProtection=x.Failures.FireProtection or {Engines={[1]={Fire=false},[2]={Fire=false}},APU={Fire=false}}
- x.Failures.FireProtection.Engines=x.Failures.FireProtection.Engines or {[1]={Fire=false},[2]={Fire=false}}
- for i=1,2 do x.Failures.FireProtection.Engines[i]=x.Failures.FireProtection.Engines[i] or {Fire=false}; x.Failures.FireProtection.Engines[i].Fire=x.Failures.FireProtection.Engines[i].Fire==true end
- x.Failures.FireProtection.APU=x.Failures.FireProtection.APU or {Fire=false}; x.Failures.FireProtection.APU.Fire=x.Failures.FireProtection.APU.Fire==true
- x.Failures.Pressurization=x.Failures.Pressurization or {Pack1=false,Pack2=false,OutflowValve=false}
- x.Failures.AntiIce=x.Failures.AntiIce or {Engine1=false,Engine2=false,Wing=false}
+ local f=x.Failures
+ f.Engines=f.Engines or {}
+ for i=1,2 do f.Engines[i]=f.Engines[i] or {}; f.Engines[i].Active=bool(f.Engines[i].Active); f.Engines[i].Reason=f.Engines[i].Reason; f.Engines[i].Fire=bool(f.Engines[i].Fire) end
+ f.Hydraulic=f.Hydraulic or {}; f.Hydraulic.A=bool(f.Hydraulic.A); f.Hydraulic.B=bool(f.Hydraulic.B)
+ f.Electrical=f.Electrical or {}; f.Electrical.Bus1=bool(f.Electrical.Bus1); f.Electrical.Bus2=bool(f.Electrical.Bus2); f.Electrical.APU=bool(f.Electrical.APU)
+ f.FlightControls=f.FlightControls or {}; f.FlightControls.Aileron=bool(f.FlightControls.Aileron); f.FlightControls.Elevator=bool(f.FlightControls.Elevator); f.FlightControls.Rudder=bool(f.FlightControls.Rudder)
+ f.FireProtection=f.FireProtection or {}; f.FireProtection.Engines=f.FireProtection.Engines or {}; f.FireProtection.APU=f.FireProtection.APU or {}
+ for i=1,2 do f.FireProtection.Engines[i]=f.FireProtection.Engines[i] or {}; f.FireProtection.Engines[i].Fire=bool(f.FireProtection.Engines[i].Fire) end
+ f.FireProtection.APU.Fire=bool(f.FireProtection.APU.Fire)
+ f.Pressurization=f.Pressurization or {}; f.Pressurization.Pack1=bool(f.Pressurization.Pack1); f.Pressurization.Pack2=bool(f.Pressurization.Pack2); f.Pressurization.OutflowValve=bool(f.Pressurization.OutflowValve)
+ f.AntiIce=f.AntiIce or {}; f.AntiIce.Engine1=bool(f.AntiIce.Engine1); f.AntiIce.Engine2=bool(f.AntiIce.Engine2); f.AntiIce.Wing=bool(f.AntiIce.Wing)
  x.FailureEffects=x.FailureEffects or {}
  local e=x.FailureEffects
- e.Engine1Failed=e.Engine1Failed==true; e.Engine2Failed=e.Engine2Failed==true
- e.HydraulicAFailed=e.HydraulicAFailed==true; e.HydraulicBFailed=e.HydraulicBFailed==true
- e.ElectricalBus1Failed=e.ElectricalBus1Failed==true; e.ElectricalBus2Failed=e.ElectricalBus2Failed==true; e.ElectricalAPUFailed=e.ElectricalAPUFailed==true
+ e.Engine1Failed=bool(e.Engine1Failed); e.Engine2Failed=bool(e.Engine2Failed); e.HydraulicAFailed=bool(e.HydraulicAFailed); e.HydraulicBFailed=bool(e.HydraulicBFailed)
+ e.ElectricalBus1Failed=bool(e.ElectricalBus1Failed); e.ElectricalBus2Failed=bool(e.ElectricalBus2Failed); e.ElectricalAPUFailed=bool(e.ElectricalAPUFailed)
  e.AileronAuthority=tonumber(e.AileronAuthority) or 1; e.ElevatorAuthority=tonumber(e.ElevatorAuthority) or 1; e.RudderAuthority=tonumber(e.RudderAuthority) or 1
- e.Engine1Fire=e.Engine1Fire==true; e.Engine2Fire=e.Engine2Fire==true; e.APUFire=e.APUFire==true
- e.Pack1Failed=e.Pack1Failed==true; e.Pack2Failed=e.Pack2Failed==true; e.OutflowValveFailed=e.OutflowValveFailed==true
- e.AntiIceEngine1Failed=e.AntiIceEngine1Failed==true; e.AntiIceEngine2Failed=e.AntiIceEngine2Failed==true; e.AntiIceWingFailed=e.AntiIceWingFailed==true
- return x.Failures
+ e.Engine1Fire=bool(e.Engine1Fire); e.Engine2Fire=bool(e.Engine2Fire); e.APUFire=bool(e.APUFire)
+ e.Pack1Failed=bool(e.Pack1Failed); e.Pack2Failed=bool(e.Pack2Failed); e.OutflowValveFailed=bool(e.OutflowValveFailed)
+ e.AntiIceEngine1Failed=bool(e.AntiIceEngine1Failed); e.AntiIceEngine2Failed=bool(e.AntiIceEngine2Failed); e.AntiIceWingFailed=bool(e.AntiIceWingFailed)
+ return f
 end
 function FailureSchema.Apply(x) return apply(x) end
 return FailureSchema
