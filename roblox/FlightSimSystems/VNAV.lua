@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v0.5
+-- FlightSim VNAV vertical + speed guidance v0.6
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -8,7 +8,7 @@ function VNAV:Step(dt)
  local x=self.state:Get(); local nav=x.Navigation or {}; local route=nav.Route or {}
  x.VNAV=x.VNAV or {Mode="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0,DescentPathAngle=0,CommandVerticalSpeed=nil,ConstraintType=nil,ConstraintAltitude=nil,ConstraintSatisfied=true,TargetSpeed=nil,SpeedConstraintType=nil,SpeedConstraintSatisfied=true}
  local v=x.VNAV
- if nav.Mode~="VNAV" then v.Mode="OFF"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true; return true end
+ if v.Mode~="VNAV" then v.Mode="OFF"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true; return true end
  v.Mode="VNAV"
  local wp=route[nav.ActiveWaypoint]
  local altitude=finite(x.Altitude) and x.Altitude or 0
