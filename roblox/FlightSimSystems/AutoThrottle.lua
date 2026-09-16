@@ -1,4 +1,4 @@
--- FlightSim autothrottle speed-management controller v0.4
+-- FlightSim autothrottle speed-management controller v0.5
 -- Closed-loop game simulation; not certified Boeing autothrottle logic.
 local Config=require(script.Parent.Config)
 local AutoThrottle={}; AutoThrottle.__index=AutoThrottle
@@ -19,7 +19,6 @@ function AutoThrottle:GoAround()
  local x=self.state:Get(); local a=x.AutoThrottle or {}
  x.AutoThrottle=a; a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"
  local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
- -- Game-simulation target: retain a positive margin above the current approach speed.
  a.TargetSpeed=clamp(math.max(120,speed+20),120,180); a.SpeedError=a.TargetSpeed-speed
  a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}
  for i=1,2 do
@@ -33,7 +32,9 @@ function AutoThrottle:Step(dt)
  x.AutoThrottle=a; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}; a.Active=false; a.Protection=a.Protection or "NONE"
  if ap.GoAround==true or a.Mode=="TOGA" then
   local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
-  a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"; a.TargetSpeed=clamp(math.max(120,speed+20),120,180); a.SpeedError=a.TargetSpeed-speed
+  a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"
+  if not finite(a.TargetSpeed) then a.TargetSpeed=clamp(math.max(120,speed+20),120,180) end
+  a.SpeedError=a.TargetSpeed-speed
   local leftAvailable=engineAvailable(x.Engines and x.Engines[1]); local rightAvailable=engineAvailable(x.Engines and x.Engines[2])
   a.ThrottleCommand[1]=leftAvailable and 1 or 0; a.ThrottleCommand[2]=rightAvailable and 1 or 0
   x.Throttle[1]=a.ThrottleCommand[1]; x.Throttle[2]=a.ThrottleCommand[2]
