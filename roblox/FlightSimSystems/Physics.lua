@@ -1,4 +1,4 @@
--- FlightSim aerodynamic / ground dynamics foundation v1.0
+-- FlightSim aerodynamic / ground dynamics foundation v1.1
 -- Game simulation model; coefficients are tunable approximations, not certified aircraft data.
 local Config=require(script.Parent.Config)
 local Physics={}; Physics.__index=Physics
@@ -16,6 +16,8 @@ function Physics:Step(dt)
  local flap=clamp(s.Flap or 0,0,1)
  local gear=x.GearPosition or {}; local gearExposed=clamp(((gear.Nose or 0)+(gear.Left or 0)+(gear.Right or 0))/3,0,1)
  local brakePressure=clamp((x.Brakes and x.Brakes.BrakePressure) or 0,0,1)
+ local leftBrake=clamp((x.Brakes and x.Brakes.LeftPressure) or brakePressure,0,1)
+ local rightBrake=clamp((x.Brakes and x.Brakes.RightPressure) or brakePressure,0,1)
  local wingArea=125.0; local rho=1.225*math.exp(-math.max(x.Altitude or 0,0)/8500)
  local trim=clamp(x.TrimPitch or 0,-8,8); local aoa=clamp((x.Pitch or 0)-trim,-20,30)
  local flapLift=0.52*flap+0.20*flap*flap; local flapDrag=0.025*flap+0.035*flap*flap
@@ -24,12 +26,11 @@ function Physics:Step(dt)
  local cd0=0.028+flapDrag+0.02*gearExposed; local cd=cd0+0.045*cl*cl+0.08*stallRatio
  local q=0.5*rho*speedMS*speedMS; local lift=(speedMS<1) and 0 or q*wingArea*cl; local drag=q*wingArea*cd
  local ground=x.GroundContact==true
- -- Ground braking is applied only while weight is supported by the wheels.
- -- Reverse thrust is also ground-only and opposes the forward engine force.
  local wheelNormal=math.max(weight*math.cos(math.rad(x.Roll or 0)),0)
- local antiSkid=1
- if speedKts<8 then antiSkid=clamp(speedKts/8,0,1) end
- local wheelBrakeForce=ground and brakePressure*0.38*wheelNormal*antiSkid or 0
+ local speedFactor=clamp(speedKts/8,0,1)
+ local leftAnti=1; local rightAnti=1
+ if x.Brakes and x.Brakes.AntiSkid~=false and speedKts<8 then leftAnti=speedFactor; rightAnti=speedFactor end
+ local wheelBrakeForce=ground and 0.38*wheelNormal*clamp((leftBrake+rightBrake)*0.5,0,1)*((leftAnti+rightAnti)*0.5) or 0
  local reverseForce=ground and reverse*thrust*0.72*clamp(speedKts/35,0,1) or 0
  local reverseRequested=reverse>0 and ground and speedKts>15
  if not ground then reverse=0 end
