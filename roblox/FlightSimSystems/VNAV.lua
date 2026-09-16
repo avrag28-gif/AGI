@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v1.2
+-- FlightSim VNAV vertical + speed guidance v1.3
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local FT_PER_M=3.28084
@@ -16,14 +16,13 @@ local function constraintTarget(wp,cruise,targetFallback)
  if c=="ABOVE" then raw=math.max(raw,minAlt or raw) elseif c=="BELOW" then raw=math.min(raw,maxAlt or raw) end
  return clamp(raw,0,60000),c
 end
-local function routeDistance(route,startIndex)
+local function routeDistanceTo(route,startIndex,endIndex)
  local total=0; local previous=route[startIndex] and route[startIndex].Position
- if typeof(previous)~="Vector3" then return 0 end
- for i=startIndex+1,#route do
+ if typeof(previous)~="Vector3" then return nil end
+ for i=startIndex+1,math.min(endIndex,#route) do
   local position=route[i].Position
-  if typeof(position)~="Vector3" then break end
-  local dx,dz=position.X-previous.X,position.Z-previous.Z
-  total=total+math.sqrt(dx*dx+dz*dz); previous=position
+  if typeof(position)~="Vector3" then return nil end
+  local dx,dz=position.X-previous.X,position.Z-previous.Z; total=total+math.sqrt(dx*dx+dz*dz); previous=position
  end
  return total
 end
@@ -38,36 +37,40 @@ function VNAV:Step(dt)
  local altitude=finite(x.Altitude) and x.Altitude or 0
  local target,constraint=constraintTarget(wp,fmc.CruiseAltitude,ap.TargetAltitude)
  v.ConstraintType=target and constraint or nil; v.ConstraintAltitude=target; v.TargetAltitude=target
+ local tolerance=(constraint=="AT") and 75 or 100
  if target then
-  local tolerance=(constraint=="AT") and 75 or 100
   if constraint=="ABOVE" then v.ConstraintSatisfied=altitude+tolerance>=target elseif constraint=="BELOW" then v.ConstraintSatisfied=altitude-tolerance<=target else v.ConstraintSatisfied=math.abs(altitude-target)<=tolerance end
   v.PathError=target-altitude
  else
   v.ConstraintSatisfied=true; v.PathError=0
  end
  local distance=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distance*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
- local tolerance=(constraint=="AT") and 75 or 100
  local descentDistance=0
  if target and altitude>target then descentDistance=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M) end
  local todDistance=nil
- if altitude>0 then
-  local cumulative=0
-  for j=index+1,#route do
-   local nextWp=route[j]; local prior=route[j-1]
-   if not nextWp or typeof(nextWp.Position)~="Vector3" or not prior or typeof(prior.Position)~="Vector3" then break end
-   local dx,dz=nextWp.Position.X-prior.Position.X,nextWp.Position.Z-prior.Position.Z; cumulative=cumulative+math.sqrt(dx*dx+dz*dz)
-   local nextAltitude=tonumber(nextWp.Altitude)
-   if finite(nextAltitude) and nextAltitude<altitude then
-    local required=math.max(0,(altitude-nextAltitude)/math.tan(math.rad(3))/FT_PER_M)
-    todDistance=math.max(0,cumulative-required); break
+ if target and altitude>target then
+  if altitude-target>tolerance then
+   -- If the active waypoint is the lower constraint, descent must begin before reaching it.
+   todDistance=math.max(0,distance-descentDistance)
+   -- Otherwise look ahead for the first downstream lower constraint and calculate its TOD.
+   if target>=altitude-tolerance then
+    local cumulative=0
+    for j=index+1,#route do
+     local nextWp=route[j]; local nextAltitude=nextWp and tonumber(nextWp.Altitude)
+     local leg=routeDistanceTo(route,j-1,j)
+     if leg==nil then break end
+     cumulative=cumulative+leg
+     if finite(nextAltitude) and nextAltitude<altitude-tolerance then
+      local required=math.max(0,(altitude-nextAltitude)/math.tan(math.rad(3))/FT_PER_M); todDistance=math.max(0,cumulative-required); break
+     end
+    end
    end
   end
  end
  if target then
-  -- TOD uses the first downstream lower-altitude constraint, not only the active waypoint.
   v.TopOfDescentDistance=todDistance
   if v.PathError>tolerance then v.Phase="CLIMB"
-  elseif v.PathError<-tolerance then v.Phase=(todDistance==nil or distance<=descentDistance and (todDistance or 0)<=0) and "DESCENT" or "CRUISE"
+  elseif v.PathError<-tolerance then v.Phase=(todDistance~=nil and todDistance>0) and "CRUISE" or "DESCENT"
   else v.Phase="ALTITUDE_CAPTURE" end
  else
   v.Phase="CRUISE"; v.TopOfDescentDistance=nil
