@@ -1,4 +1,4 @@
--- FlightSim fuel system v0.7
+-- FlightSim fuel system v0.8
 -- Server-authoritative tank pumps, engine-specific feed paths, crossfeed and fuel-power interlock.
 -- Game simulation only; quantities and flow rates are tunable simulation values.
 local Fuel={}; Fuel.__index=Fuel
@@ -8,11 +8,12 @@ local function ensure(x)
  x.FuelSystem=x.FuelSystem or {}
  local s=x.FuelSystem; local ff=x.Failures and x.Failures.Fuel or {}
  s.LeftQuantity=tonumber(s.LeftQuantity) or x.Fuel.Left or 0; s.CenterQuantity=tonumber(s.CenterQuantity) or x.Fuel.Center or 0; s.RightQuantity=tonumber(s.RightQuantity) or x.Fuel.Right or 0; s.TotalQuantity=tonumber(s.TotalQuantity) or x.Fuel.Total or 0
- s.LeftPump=s.LeftPump~=false and ff.LeftPump~=true; s.CenterPump=s.CenterPump~=false and ff.CenterPump~=true; s.RightPump=s.RightPump~=false and ff.RightPump~=true; s.Crossfeed=s.Crossfeed==true and ff.Crossfeed~=true
+ s.LeftPumpSwitch=s.LeftPumpSwitch~=false and (s.LeftPump~=false); s.CenterPumpSwitch=s.CenterPumpSwitch~=false and (s.CenterPump~=false); s.RightPumpSwitch=s.RightPumpSwitch~=false and (s.RightPump~=false)
+ s.CrossfeedSwitch=s.CrossfeedSwitch==true or s.Crossfeed==true
  s.EngineFeed=s.EngineFeed or {[1]="AUTO",[2]="AUTO"}; s.EngineFeed[1]=s.EngineFeed[1] or "AUTO"; s.EngineFeed[2]=s.EngineFeed[2] or "AUTO"
  s.EngineFuelAvailable=s.EngineFuelAvailable or {[1]=true,[2]=true}
  s.LowFuel=s.LowFuel==true; s.Imbalance=tonumber(s.Imbalance) or 0; s.FeedPressure=tonumber(s.FeedPressure) or 0
- return x.Fuel,s
+ return x.Fuel,s,ff
 end
 local function consume(tanks,name,demand)
  local take=math.min(math.max(0,tanks[name]),demand); tanks[name]-=take; return take
@@ -31,8 +32,7 @@ function Fuel:_trySource(tanks,s,name,demand)
 end
 function Fuel:_feedEngine(tanks,s,index,demand)
  if demand<=0 then return 0,"NONE" end
- local source=s.EngineFeed[index]
- local own=(index==1) and "Left" or "Right"; local other=(own=="Left") and "Right" or "Left"
+ local source=s.EngineFeed[index]; local own=(index==1) and "Left" or "Right"; local other=(own=="Left") and "Right" or "Left"
  local used=0; local sources={}
  local function take(name,label)
   local amount=self:_trySource(tanks,s,name,demand-used)
@@ -45,8 +45,7 @@ function Fuel:_feedEngine(tanks,s,index,demand)
  return used,(#sources>0 and table.concat(sources,"+") or "NONE")
 end
 function Fuel:_pathAvailable(s,tanks,index)
- local source=s.EngineFeed[index]
- local own=(index==1) and "Left" or "Right"; local other=(own=="Left") and "Right" or "Left"
+ local source=s.EngineFeed[index]; local own=(index==1) and "Left" or "Right"; local other=(own=="Left") and "Right" or "Left"
  local function usable(name)
   if name=="Left" then return s.LeftPump and tanks.Left>0 end
   if name=="Right" then return s.RightPump and tanks.Right>0 end
@@ -59,17 +58,15 @@ function Fuel:_pathAvailable(s,tanks,index)
  return usable("Center") or usable(own) or (s.Crossfeed and usable(other))
 end
 function Fuel:Step(dt)
- local x=self.state:Get(); local tanks,s=ensure(x)
+ local x=self.state:Get(); local tanks,s,ff=ensure(x)
  tanks.Left=math.max(0,tonumber(tanks.Left) or 0); tanks.Center=math.max(0,tonumber(tanks.Center) or 0); tanks.Right=math.max(0,tonumber(tanks.Right) or 0)
-
- -- Fuel pumps require an available electrical source in the simulation.
- -- This prevents a failed/uncharged electrical system from magically feeding engines.
  local electrical=x.Electrical or {}
  local pumpPower=(electrical.Battery==true or electrical.ExternalPower==true or electrical.APU==true or electrical.Bus1==true or electrical.Bus2==true)
- if not pumpPower then
-  s.LeftPump=false; s.CenterPump=false; s.RightPump=false
- end
-
+ -- Switch positions are persistent cockpit commands; Pump fields are effective availability.
+ s.LeftPump=s.LeftPumpSwitch==true and ff.LeftPump~=true and pumpPower
+ s.CenterPump=s.CenterPumpSwitch==true and ff.CenterPump~=true and pumpPower
+ s.RightPump=s.RightPumpSwitch==true and ff.RightPump~=true and pumpPower
+ s.Crossfeed=s.CrossfeedSwitch==true and ff.Crossfeed~=true
  s.EngineFuelAvailable[1]=self:_pathAvailable(s,tanks,1); s.EngineFuelAvailable[2]=self:_pathAvailable(s,tanks,2)
  local d1=self:_engineDemand(x,1,x.Engines[1] and x.Engines[1].FuelFlow,dt); local d2=self:_engineDemand(x,2,x.Engines[2] and x.Engines[2].FuelFlow,dt)
  local used1,src1=self:_feedEngine(tanks,s,1,d1); local used2,src2=self:_feedEngine(tanks,s,2,d2)
