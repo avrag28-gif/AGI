@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v1.1
+-- FlightSim VNAV vertical + speed guidance v1.2
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local FT_PER_M=3.28084
@@ -15,6 +15,17 @@ local function constraintTarget(wp,cruise,targetFallback)
  if finite(maxAlt) then raw=math.min(raw,maxAlt) end
  if c=="ABOVE" then raw=math.max(raw,minAlt or raw) elseif c=="BELOW" then raw=math.min(raw,maxAlt or raw) end
  return clamp(raw,0,60000),c
+end
+local function routeDistance(route,startIndex)
+ local total=0; local previous=route[startIndex] and route[startIndex].Position
+ if typeof(previous)~="Vector3" then return 0 end
+ for i=startIndex+1,#route do
+  local position=route[i].Position
+  if typeof(position)~="Vector3" then break end
+  local dx,dz=position.X-previous.X,position.Z-previous.Z
+  total=total+math.sqrt(dx*dx+dz*dz); previous=position
+ end
+ return total
 end
 function VNAV.new(state) return setmetatable({state=state,lastWaypoint=nil},VNAV) end
 function VNAV:Step(dt)
@@ -38,12 +49,25 @@ function VNAV:Step(dt)
  local tolerance=(constraint=="AT") and 75 or 100
  local descentDistance=0
  if target and altitude>target then descentDistance=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M) end
+ local todDistance=nil
+ if altitude>0 then
+  local cumulative=0
+  for j=index+1,#route do
+   local nextWp=route[j]; local prior=route[j-1]
+   if not nextWp or typeof(nextWp.Position)~="Vector3" or not prior or typeof(prior.Position)~="Vector3" then break end
+   local dx,dz=nextWp.Position.X-prior.Position.X,nextWp.Position.Z-prior.Position.Z; cumulative=cumulative+math.sqrt(dx*dx+dz*dz)
+   local nextAltitude=tonumber(nextWp.Altitude)
+   if finite(nextAltitude) and nextAltitude<altitude then
+    local required=math.max(0,(altitude-nextAltitude)/math.tan(math.rad(3))/FT_PER_M)
+    todDistance=math.max(0,cumulative-required); break
+   end
+  end
+ end
  if target then
-  -- TOD is the horizontal distance remaining before the descent must begin.
-  -- Altitude is in feet, so horizontal geometry is converted to feet before angle calculations.
-  v.TopOfDescentDistance=(altitude>target) and math.max(0,distance-descentDistance) or nil
+  -- TOD uses the first downstream lower-altitude constraint, not only the active waypoint.
+  v.TopOfDescentDistance=todDistance
   if v.PathError>tolerance then v.Phase="CLIMB"
-  elseif v.PathError<-tolerance then v.Phase=(distance<=descentDistance and "DESCENT" or "CRUISE")
+  elseif v.PathError<-tolerance then v.Phase=(todDistance==nil or distance<=descentDistance and (todDistance or 0)<=0) and "DESCENT" or "CRUISE"
   else v.Phase="ALTITUDE_CAPTURE" end
  else
   v.Phase="CRUISE"; v.TopOfDescentDistance=nil
@@ -68,7 +92,6 @@ function VNAV:Step(dt)
  else
   v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true
  end
- -- Re-reading the active waypoint every tick makes altitude, speed, TOD and phase switch immediately after Navigation advances the leg.
  if waypointChanged then v.PathError=target and (target-altitude) or 0 end
  return true
 end
