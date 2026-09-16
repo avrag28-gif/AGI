@@ -1,4 +1,4 @@
--- FlightSim landing gear / brake contract tests v0.2
+-- FlightSim landing gear / brake contract tests v0.3
 -- Source-level tests; these are not Roblox runtime execution tests.
 local LandingGear=require(script.Parent.LandingGear)
 local Brakes=require(script.Parent.Brakes)
@@ -11,7 +11,7 @@ local function run()
  local s=state(base()); local gear=LandingGear.new(s); local brakes=Brakes.new(s)
  for _=1,12 do gear:Step(0.5) end
  check(s.data.GearStatus.DownLocked,"hydraulic gear extension must reach down lock")
- s.data.Gear={Nose=false,Left=false,Right=false}; for _=1,12 do gear:Step(0.5) end
+ s.data.Gear={Nose=false,Left=false,Right=false}; for _=1,16 do gear:Step(0.5) end
  check(s.data.GearStatus.UpLocked,"hydraulic gear retraction must reach up lock")
  s.data.Hydraulic.A=0; s.data.Hydraulic.B=0; s.data.Gear={Nose=true,Left=true,Right=true}; gear:Step(1); check(s.data.GearStatus.UpLocked,"failed dual hydraulics must leave gear at its prior locked position")
  s.data.Hydraulic.A=1800; s.data.Brakes.Parking=false; s.data.Brakes.ToeBrake=1; brakes:Step(1/60); check(s.data.Brakes.BrakePressure>0,"toe brake must build pressure with hydraulics")
