@@ -1,4 +1,4 @@
--- FlightSim ATC / clearance-delivery foundation v0.1
+-- FlightSim ATC / clearance-delivery foundation v0.2
 -- Game simulation of controller workflow; not a real-world ATC service.
 local ATC={}; ATC.__index=ATC
 local PHASES={COLD=true,PUSHBACK=true,TAXI=true,TAKEOFF=true,DEPARTURE=true,ENROUTE=true,ARRIVAL=true,APPROACH=true,LANDING=true,GO_AROUND=true}
@@ -8,6 +8,9 @@ local function ensure(x)
  return x.ATC
 end
 local function normalize(v) return string.upper(tostring(v or "")):gsub("%s+"," "):gsub("^%s+",""):gsub("%s+$","") end
+local function generateSquawk()
+ return string.format("%d%d%d%d",math.random(0,7),math.random(0,7),math.random(0,7),math.random(0,7))
+end
 function ATC.new(state) return setmetatable({state=state},ATC) end
 function ATC:SetCallsign(callsign)
  local c=normalize(callsign); if #c<2 or #c>12 then return false,"invalid_callsign" end; local x=self.state:Get(); ensure(x).Callsign=c; return true
@@ -20,8 +23,9 @@ function ATC:RequestClearance(kind)
  if kind=="DEPARTURE" then
   if phase~="COLD" and phase~="PUSHBACK" and phase~="TAXI" then return false,"departure_clearance_not_available" end
   local dest=x.FMC and x.FMC.Destination or "DEST"
-  local alt=math.floor(math.clamp(tonumber(x.FMC and x.FMC.CruiseAltitude) or 10000,3000,41000)/100)*100
-  local squawk=string.format("%04d",math.random(0,4095)); squawk=squawk:gsub("[89]","0")
+  local rawAlt=tonumber(x.FMC and x.FMC.CruiseAltitude) or 10000
+  local alt=math.floor(math.clamp(finite(rawAlt) and rawAlt or 10000,3000,41000)/100)*100
+  local squawk=generateSquawk()
   a.Squawk=squawk; a.AssignedFrequency=121.7; a.AssignedAltitude=alt; a.AssignedSpeed=nil; a.AssignedHeading=nil; a.AssignedRunway=x.Navigation and x.Navigation.ApproachRunway or nil
   a.Clearance={Type="DEPARTURE",Destination=dest,Altitude=alt,Frequency=a.AssignedFrequency,Squawk=squawk,Runway=a.AssignedRunway,Sequence=a.Sequence+1}; a.Sequence+=1; a.PendingReadback=a.Clearance; a.ClearanceValid=false; a.ReadbackValid=false; a.LastMessage=string.format("CLEARED TO %s, CLIMB %d, SQUAWK %s, CONTACT GROUND %.3f",dest,alt,squawk,a.AssignedFrequency); a.LastResult="CLEARANCE_ISSUED"; return true,a.LastMessage
  elseif kind=="TAXI" then
@@ -46,7 +50,7 @@ function ATC:Readback(payload)
 end
 function ATC:Step(dt)
  local x=self.state:Get(); local a=ensure(x); if x.Transponder then x.Transponder.Code=a.Squawk end
- if a.Clearance and a.Clearance.Type=="DEPARTURE" and a.ReadbackValid then x.Transponder.Mode="ALT" end
+ if a.Clearance and a.Clearance.Type=="DEPARTURE" and a.ReadbackValid and x.Transponder then x.Transponder.Mode="ALT" end
  a.Phase=a.Phase or "COLD"
 end
 return ATC
