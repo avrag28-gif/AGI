@@ -1,6 +1,6 @@
--- FlightSim approach / ILS guidance v0.5
+-- FlightSim approach / ILS guidance v0.6
 -- Simulation approximation; runway references are supplied by airport data.
--- ILS availability is receiver-driven: NAV1 must be tuned to the runway ILS frequency.
+-- ILS owns NAV1 only when NAV1 is powered and tuned to the runway ILS frequency.
 local Approach={}; Approach.__index=Approach
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function wrap(v) return (v%360+360)%360 end
@@ -20,17 +20,22 @@ function Approach:SetRunway(data)
 end
 function Approach:Step(dt)
  local x=self.state:Get(); local n=x.Navigation; local r=n.ApproachRunway
- if not r then n.ILS=nil; self.locCaptured=false; self.gsCaptured=false; return end
  local tuned=tonumber(x.Radios and x.Radios.NAV1)
  local receiverPowered=x.Avionics and x.Avionics.Radios==true
+ if not r then
+  if n.NAV1Receiver=="ILS" then n.NAV1Receiver="NONE"; n.NAV1Ident=nil; n.NAV1Frequency=nil end
+  n.ILS=nil; self.locCaptured=false; self.gsCaptured=false; return
+ end
  local frequencyValid=r.ILSFrequency and freqMatch(tuned,r.ILSFrequency)
  local ilsAvailable=receiverPowered and frequencyValid
  if not ilsAvailable then
+  if n.NAV1Receiver=="ILS" then n.NAV1Receiver="NONE"; n.NAV1Ident=nil; n.NAV1Frequency=nil end
   n.ILS={Available=false,LocalizerValid=false,GlideSlopeValid=false,LocalizerCaptured=false,GlideSlopeCaptured=false,Distance=0,Bearing=0,CourseError=0,DesiredAltitude=nil,FrontCourse=false,Mode="NO_SIGNAL",TunedFrequency=tuned,RequiredFrequency=r.ILSFrequency,Ident=r.ILSIdent}
   self.locCaptured=false; self.gsCaptured=false
   if n.Mode=="APP" then n.CommandHeading=x.Autopilot and x.Autopilot.TargetHeading or x.Heading; n.CommandAltitude=x.Autopilot and x.Autopilot.TargetAltitude or x.Altitude end
   return true
  end
+ n.NAV1Receiver="ILS"; n.NAV1Ident=r.ILSIdent; n.NAV1Frequency=r.ILSFrequency; n.VOR=nil
  local dx,dz=x.Position.X-r.Position.X,x.Position.Z-r.Position.Z; local course=math.rad(r.Heading)
  local along=dx*math.sin(course)+dz*math.cos(course)
  local lateral=dx*math.cos(course)-dz*math.sin(course)
