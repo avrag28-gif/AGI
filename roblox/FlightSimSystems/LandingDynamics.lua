@@ -1,8 +1,8 @@
--- FlightSim landing dynamics v0.3
+-- FlightSim landing dynamics v0.4
 -- LandingDynamics is the canonical owner of wheel contact, touchdown event and touchdown quality.
+-- LandingModel owns phase/flare/rollout state; LandingDynamics owns contact metrics and rollout distance.
 -- Units: Airspeed=kt, VerticalSpeed=ft/min, RolloutDistance=m.
 local LandingDynamics={}; LandingDynamics.__index=LandingDynamics
-local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 function LandingDynamics.new(state) return setmetatable({state=state,lastGround=nil,touchdownTimer=0,touchdownQuality="NONE",initialized=false},LandingDynamics) end
 function LandingDynamics:Step(dt)
  local x=self.state:Get(); local l=x.Landing or {}; local gear=x.GearStatus or {}; local onGround=x.GroundContact==true
@@ -21,12 +21,7 @@ function LandingDynamics:Step(dt)
  local brakePressure=x.Brakes and tonumber(x.Brakes.BrakePressure) or 0
  l.BrakingActive=onGround and speed>3 and brakePressure>0
  l.ReverseThrust=onGround and speed>20 and (tonumber(x.ReverseThrust) or 0)>0
- if onGround then
-  l.RolloutDistance=(tonumber(l.RolloutDistance) or 0)+speed*0.514444*d
-  if speed<5 then l.Phase="GROUND"; l.Rollout=false else l.Phase="ROLLOUT"; l.Rollout=true end
- else
-  l.RolloutDistance=0; l.Rollout=false
- end
+ if onGround then l.RolloutDistance=(tonumber(l.RolloutDistance) or 0)+speed*0.514444*d else l.RolloutDistance=0 end
  self.lastGround=onGround
 end
 return LandingDynamics
