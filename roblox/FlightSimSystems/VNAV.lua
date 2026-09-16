@@ -1,9 +1,10 @@
--- FlightSim VNAV vertical + speed guidance v1.4
+-- FlightSim VNAV vertical + speed guidance v1.5
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local FT_PER_M=3.28084
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
+local function distance(a,b) local dx,dz=b.X-a.X,b.Z-a.Z; return math.sqrt(dx*dx+dz*dz) end
 local function constraintTarget(wp,cruise,targetFallback)
  local raw=wp and tonumber(wp.Altitude) or nil
  if not finite(raw) then raw=tonumber(cruise) end
@@ -16,15 +17,20 @@ local function constraintTarget(wp,cruise,targetFallback)
  if c=="ABOVE" then raw=math.max(raw,minAlt or raw) elseif c=="BELOW" then raw=math.min(raw,maxAlt or raw) end
  return clamp(raw,0,60000),c
 end
-local function routeDistanceTo(route,startIndex,endIndex)
- local total=0; local previous=route[startIndex] and route[startIndex].Position
- if typeof(previous)~="Vector3" then return nil end
- for i=startIndex+1,math.min(endIndex,#route) do
-  local position=route[i].Position
-  if typeof(position)~="Vector3" then return nil end
-  local dx,dz=position.X-previous.X,position.Z-previous.Z; total=total+math.sqrt(dx*dx+dz*dz); previous=position
+local function downstreamTOD(route,index,aircraftAltitude)
+ if not finite(aircraftAltitude) then return nil end
+ local totalM=0
+ for i=index+1,#route do
+  local previous=route[i-1]; local wp=route[i]
+  if not previous or not wp or typeof(previous.Position)~="Vector3" or typeof(wp.Position)~="Vector3" then break end
+  totalM=totalM+distance(previous.Position,wp.Position)
+  local target=tonumber(wp.Altitude)
+  if finite(target) and target<aircraftAltitude then
+   local requiredM=math.max(0,(aircraftAltitude-target)/math.tan(math.rad(3))/FT_PER_M)
+   return math.max(0,totalM-requiredM)
+  end
  end
- return total
+ return nil
 end
 function VNAV.new(state) return setmetatable({state=state,lastWaypoint=nil},VNAV) end
 function VNAV:Step(dt)
@@ -33,65 +39,39 @@ function VNAV:Step(dt)
  local v=x.VNAV
  if v.Mode~="VNAV" then v.Mode="OFF"; v.Phase="OFF"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true; v.TopOfDescentDistance=nil; self.lastWaypoint=nil; return true end
  v.Mode="VNAV"
- local index=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); local wp=route[index]; local waypointChanged=self.lastWaypoint~=index; self.lastWaypoint=index
- local altitude=finite(x.Altitude) and x.Altitude or 0
- local target,constraint=constraintTarget(wp,fmc.CruiseAltitude,ap.TargetAltitude)
+ local index=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); local wp=route[index]; self.lastWaypoint=index
+ local altitude=finite(x.Altitude) and x.Altitude or 0; local target,constraint=constraintTarget(wp,fmc.CruiseAltitude,ap.TargetAltitude)
  v.ConstraintType=target and constraint or nil; v.ConstraintAltitude=target; v.TargetAltitude=target
  local tolerance=(constraint=="AT") and 75 or 100
  if target then
   if constraint=="ABOVE" then v.ConstraintSatisfied=altitude+tolerance>=target elseif constraint=="BELOW" then v.ConstraintSatisfied=altitude-tolerance<=target else v.ConstraintSatisfied=math.abs(altitude-target)<=tolerance end
   v.PathError=target-altitude
- else
-  v.ConstraintSatisfied=true; v.PathError=0
- end
- local distance=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distance*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
- local descentDistance=0
- if target and altitude>target then descentDistance=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M) end
- local todDistance=nil
- if target and altitude>target and altitude-target>tolerance then
-  -- The active lower constraint determines the descent required before reaching it.
-  todDistance=math.max(0,distance-descentDistance)
- elseif target and altitude<=target+tolerance then
-  -- At or below the active target, look ahead for the first lower constraint.
-  local cumulative=0
-  for j=index+1,#route do
-   local nextWp=route[j]; local nextAltitude=nextWp and tonumber(nextWp.Altitude); local leg=routeDistanceTo(route,j-1,j)
-   if leg==nil then break end
-   cumulative=cumulative+leg
-   if finite(nextAltitude) and nextAltitude<altitude-tolerance then
-    local required=math.max(0,(altitude-nextAltitude)/math.tan(math.rad(3))/FT_PER_M); todDistance=math.max(0,cumulative-required); break
-   end
-  end
- end
+ else v.ConstraintSatisfied=true; v.PathError=0 end
+ local distanceToWp=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distanceToWp*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
+ local descentDistance=(target and altitude>target) and math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M) or 0
+ local tod=downstreamTOD(route,index,altitude)
  if target then
-  v.TopOfDescentDistance=todDistance
+  v.TopOfDescentDistance=tod
   if v.PathError>tolerance then v.Phase="CLIMB"
-  elseif v.PathError<-tolerance then v.Phase=(todDistance~=nil and todDistance>0) and "CRUISE" or "DESCENT"
+  elseif v.PathError<-tolerance then v.Phase=(tod==nil or tod<=0) and "DESCENT" or "CRUISE"
   else v.Phase="ALTITUDE_CAPTURE" end
- else
-  v.Phase="CRUISE"; v.TopOfDescentDistance=nil
- end
+ else v.Phase="CRUISE"; v.TopOfDescentDistance=nil end
  local pathAngle=0
  if target then
   if v.Phase=="DESCENT" then pathAngle=-math.rad(3) elseif v.Phase=="CLIMB" then pathAngle=math.atan2(v.PathError,distanceFt) else pathAngle=math.atan2(v.PathError,math.max(distanceFt,3040)) end
   pathAngle=clamp(pathAngle,-math.rad(6),math.rad(6))
  end
  local desiredVS=math.tan(pathAngle)*fps*60
- if distance<1000 then desiredVS=clamp(desiredVS,-800,800) elseif distance<5000 then desiredVS=clamp(desiredVS,-1800,1800) else desiredVS=clamp(desiredVS,-2500,2500) end
+ if distanceToWp<1000 then desiredVS=clamp(desiredVS,-800,800) elseif distanceToWp<5000 then desiredVS=clamp(desiredVS,-1800,1800) else desiredVS=clamp(desiredVS,-2500,2500) end
  if v.Phase=="CRUISE" or math.abs(v.PathError)<75 then desiredVS=clamp(v.PathError*0.08,-800,800) end
  if constraint=="ABOVE" and altitude<target then desiredVS=math.max(desiredVS,0) elseif constraint=="BELOW" and altitude>target then desiredVS=math.min(desiredVS,0) end
- v.VerticalSpeed=desiredVS; v.CommandVerticalSpeed=desiredVS; v.DescentPathAngle=math.deg(pathAngle)
- nav.CommandAltitude=target; nav.CommandVerticalSpeed=desiredVS
+ v.VerticalSpeed=desiredVS; v.CommandVerticalSpeed=desiredVS; v.DescentPathAngle=math.deg(pathAngle); nav.CommandAltitude=target; nav.CommandVerticalSpeed=desiredVS
  local rawSpeed=wp and tonumber(wp.Speed) or nil; local speedConstraint=wp and string.upper(tostring(wp.SpeedConstraint or "AT")) or "AT"
  if finite(rawSpeed) then
   local targetSpeed=clamp(rawSpeed,60,350); v.TargetSpeed=targetSpeed; v.SpeedConstraintType=speedConstraint; local speedTolerance=5
   if speedConstraint=="ABOVE" then v.SpeedConstraintSatisfied=speed+speedTolerance>=targetSpeed elseif speedConstraint=="BELOW" then v.SpeedConstraintSatisfied=speed-speedTolerance<=targetSpeed else v.SpeedConstraintSatisfied=math.abs(speed-targetSpeed)<=speedTolerance end
- elseif finite(ap.TargetSpeed) then
-  v.TargetSpeed=clamp(ap.TargetSpeed,60,350); v.SpeedConstraintType="SELECTED"; v.SpeedConstraintSatisfied=math.abs(speed-v.TargetSpeed)<=5
- else
-  v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true
- end
- if waypointChanged then v.PathError=target and (target-altitude) or 0 end
+ elseif finite(ap.TargetSpeed) then v.TargetSpeed=clamp(ap.TargetSpeed,60,350); v.SpeedConstraintType="SELECTED"; v.SpeedConstraintSatisfied=math.abs(speed-v.TargetSpeed)<=5
+ else v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true end
  return true
 end
 return VNAV
