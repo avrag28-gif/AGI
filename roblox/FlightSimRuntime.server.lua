@@ -1,4 +1,4 @@
--- FlightSim modular runtime v2.3
+-- FlightSim modular runtime v2.4
 local Players=game:GetService("Players"); local RunService=game:GetService("RunService"); local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local root=script.Parent; local systemsFolder=root:WaitForChild("FlightSimSystems"); local shared=ReplicatedStorage:WaitForChild("FlightSim"); local remotes=shared:WaitForChild("Remotes")
 local Config=require(systemsFolder:WaitForChild("Config")); local State=require(systemsFolder:WaitForChild("State")); local Electrical=require(systemsFolder:WaitForChild("Electrical")); local APU=require(systemsFolder:WaitForChild("APU")); local Engine=require(systemsFolder:WaitForChild("Engine")); local Core=require(systemsFolder:WaitForChild("Core")); local Hydraulic=require(systemsFolder:WaitForChild("Hydraulic")); local Fuel=require(systemsFolder:WaitForChild("Fuel")); local FireProtection=require(systemsFolder:WaitForChild("FireProtection")); local Annunciation=require(systemsFolder:WaitForChild("Annunciation")); local FlightControls=require(systemsFolder:WaitForChild("FlightControls")); local LandingGear=require(systemsFolder:WaitForChild("LandingGear")); local Brakes=require(systemsFolder:WaitForChild("Brakes")); local Avionics=require(systemsFolder:WaitForChild("Avionics")); local Navigation=require(systemsFolder:WaitForChild("Navigation")); local Autopilot=require(systemsFolder:WaitForChild("Autopilot")); local VNAV=require(systemsFolder:WaitForChild("VNAV")); local FMC=require(systemsFolder:WaitForChild("FMC")); local MCP=require(systemsFolder:WaitForChild("MCP")); local Approach=require(systemsFolder:WaitForChild("Approach")); local VOR=require(systemsFolder:WaitForChild("VOR")); local LandingModel=require(systemsFolder:WaitForChild("LandingModel")); local LandingDynamics=require(systemsFolder:WaitForChild("LandingDynamics")); local Physics=require(systemsFolder:WaitForChild("Physics")); local Trim=require(systemsFolder:WaitForChild("Trim")); local Flaps=require(systemsFolder:WaitForChild("Flaps")); local Radio=require(systemsFolder:WaitForChild("Radio")); local Transponder=require(systemsFolder:WaitForChild("Transponder")); local GroundSteering=require(systemsFolder:WaitForChild("GroundSteering")); local Failures=require(systemsFolder:WaitForChild("Failures")); local AircraftRegistry=require(systemsFolder:WaitForChild("AircraftRegistry")); local CommandRouter=require(systemsFolder:WaitForChild("CommandRouter"))
@@ -17,9 +17,10 @@ local function simulationStep(dt)
   local s=simulations[id]; if not s then return end
   -- Phase 1: sources and upstream systems.
   s.apu:Step(dt); s.fuel:Step(dt); s.engine:Step(dt); s.fireProtection:Step(dt); s.failures:Step(dt); s.electrical:Step(dt); s.core:Step(dt)
-  -- Phase 2: pilot selections first, then computed guidance. MCP must not overwrite
-  -- Navigation/VNAV/ILS command outputs after those systems have calculated them.
-  s.fmc:Step(dt); s.mcp:Step(dt); s.navigation:Step(dt); s.vor:Step(dt); s.vnav:Step(dt); s.approach:Step(dt); s.autopilot:Step(dt); s.trim:Step(dt); s.flaps:Step(dt)
+  -- Phase 2: pilot selections first, then navigation/receiver/guidance ownership.
+  s.fmc:Step(dt); s.mcp:Step(dt); s.navigation:Step(dt); s.approach:Step(dt); s.vor:Step(dt); s.vnav:Step(dt); s.autopilot:Step(dt); s.trim:Step(dt); s.flaps:Step(dt)
+  -- Approach runs before VOR so NAV1 ownership is resolved deterministically in one frame.
+  -- If ILS owns NAV1, VOR clears its output; otherwise a tuned VOR may claim NAV1.
   -- Phase 3: hydraulic consumers publish demand.
   s.flightControls:Step(dt); s.landingGear:Step(dt); s.brakes:Step(dt)
   -- Phase 4: hydraulic source/load integration.
