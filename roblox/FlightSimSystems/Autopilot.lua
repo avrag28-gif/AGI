@@ -1,4 +1,4 @@
--- FlightSim autopilot / VOR / ILS / VNAV controller v1.2
+-- FlightSim autopilot / VOR / ILS / VNAV controller v1.3
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -14,7 +14,7 @@ function Autopilot:Step(dt)
  if ap.GoAround then
   nav.Mode="HDG"; v.Mode="OFF"; if ils then ils.LocalizerCaptured=false; ils.GlideSlopeCaptured=false end
   ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false; ap.Mode="GO_AROUND"
-  local targetH=finite(ap.GoAroundHeading) and ap.GoAroundHeading%360 or heading; local baseAltitude=finite(ap.GoAroundAltitude) and ap.GoAroundAltitude or altitude; local targetA=math.max(baseAltitude,altitude+1000)
+  local targetH=finite(ap.GoAroundHeading) and ap.GoAroundHeading%360 or (heading+180)%360; local baseAltitude=finite(ap.GoAroundAltitude) and ap.GoAroundAltitude or altitude; local targetA=math.max(baseAltitude,altitude+1000)
   ap.TargetHeading=targetH; ap.TargetAltitude=targetA
   local he=err(targetH,heading); local ae=targetA-altitude
   self.bankCommand=slew(self.bankCommand,clamp(he/30,-0.65,0.65),1.8,dt); self.pitchCommand=slew(self.pitchCommand,clamp(ae/1200,-0.40,0.40),1.5,dt)
@@ -44,6 +44,11 @@ function Autopilot:Step(dt)
  local bankLimit=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 0.75 or 0.65
  local bankGain=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 1/12 or 1/30
  local targetBank=clamp(he*bankGain,-bankLimit,bankLimit)
+ -- ILS localizer signal is already signed: negative means left/right correction according to runway geometry.
+ if ap.Mode=="APP_LOC" or ap.Mode=="APP_GS" or ap.Mode=="APP_ARMED" then
+  local loc=finite(ils and ils.Localizer) and ils.Localizer or 0
+  targetBank=clamp(loc*1.8,-bankLimit,bankLimit)
+ end
  local altitudeError=targetA-altitude
  local pitchLimit=(ap.Mode=="APP_GS") and 0.32 or 0.45
  local targetPitch
