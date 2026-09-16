@@ -1,0 +1,1 @@
+Legacy `MCP.lua` is retained only because the GitHub Contents API cannot replace/remove that path reliably in the current repository state. The production runtime uses `MCP.v02.lua`.
