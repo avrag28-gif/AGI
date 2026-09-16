@@ -1,4 +1,4 @@
--- FlightSim landing integration contract tests v0.1
+-- FlightSim landing integration contract tests v0.2
 -- Source-level tests for landing-state ownership, transition events and touchdown quality.
 local LandingModel=require(script.Parent.LandingModel)
 local LandingDynamics=require(script.Parent.LandingDynamics)
@@ -14,7 +14,7 @@ local function run()
  model:Step(1/60); dynamics:Step(1/60); check(s.data.Landing.Takeoff,"ground-to-air transition must emit takeoff")
  model:Step(1/60); check(not s.data.Landing.Takeoff,"takeoff must be a one-tick transition event")
  s.data.Altitude=40; s.data.VerticalSpeed=-300; s.data.Airspeed=135; model:Step(1/60); check(s.data.Landing.Flare and s.data.Landing.Phase=="FLARE","eligible landing state must enter flare")
- s.data.GroundContact=true; s.data.VerticalSpeed=-100; dynamics:Step(1/60); check(s.data.Landing.Touchdown,"airborne-to-ground transition must emit touchdown")
+ s.data.GroundContact=true; s.data.VerticalSpeed=-100; model:Step(1/60); dynamics:Step(1/60); check(s.data.Landing.Touchdown,"airborne-to-ground transition must emit touchdown")
  check(s.data.Landing.TouchdownEvent and s.data.Landing.TouchdownQuality=="SMOOTH","touchdown quality/event classification missing")
  check(s.data.Landing.WheelContact,"locked landing gear on ground must report wheel contact")
  check(s.data.Landing.Rollout,"moving aircraft on ground must enter rollout")
