@@ -1,5 +1,5 @@
--- FlightSim FMC/CDU data model v0.3
--- Validates route data and preserves basic altitude/speed constraints for VNAV.
+-- FlightSim FMC/CDU data model v0.4
+-- Validates route data and exposes active-leg/progress data for VNAV and navigation.
 local FMC={}; FMC.__index=FMC
 local MAX_WAYPOINTS=64; local MAX_IDENT=8
 local function ident(v) local s=string.upper(string.sub(tostring(v or ""),1,MAX_IDENT)); return s:match("^[A-Z0-9%-%._]+$") and s or "" end
@@ -17,7 +17,10 @@ local function copyWaypoint(w)
  return {Ident=ident(w.Ident),Position=w.Position,Altitude=alt and tonumber(alt) or nil,AltitudeConstraint=c,MinAltitude=minAlt and tonumber(minAlt) or nil,MaxAltitude=maxAlt and tonumber(maxAlt) or nil,Speed=speed and tonumber(speed) or nil,SpeedConstraint=sc,CaptureRadius=math.clamp(tonumber(w.CaptureRadius) or 2500,250,10000)}
 end
 function FMC.new(state) return setmetatable({state=state,page="IDENT",scratch=""},FMC) end
-function FMC:Step(dt) local x=self.state:Get(); x.FMC=x.FMC or {}; x.FMC.Page=x.FMC.Page or self.page; x.FMC.Scratchpad=x.FMC.Scratchpad or self.scratch end
+function FMC:Step(dt)
+ local x=self.state:Get(); x.FMC=x.FMC or {}; local f=x.FMC; local nav=x.Navigation or {}
+ f.Page=f.Page or self.page; f.Scratchpad=f.Scratchpad or self.scratch; f.ActiveWaypoint=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); f.RouteComplete=nav.RouteComplete==true; f.Active=(#(f.Route or {})>0) and not f.RouteComplete
+end
 function FMC:SetPage(page) local p=string.upper(string.sub(tostring(page or "IDENT"),1,16)); local allowed={IDENT=true,RTE=true,LEGS=true,DEPARR=true,PERF=true,PROG=true,NAVRAD=true}; if not allowed[p] then return false,"invalid_page" end; local x=self.state:Get(); x.FMC=x.FMC or {}; x.FMC.Page=p; self.page=p; return true end
 function FMC:SetScratchpad(text) local x=self.state:Get(); x.FMC=x.FMC or {}; x.FMC.Scratchpad=string.upper(string.sub(tostring(text or ""),1,80)); self.scratch=x.FMC.Scratchpad; return true end
 function FMC:SetRoute(origin,destination,route,cruiseAltitude)
@@ -25,6 +28,6 @@ function FMC:SetRoute(origin,destination,route,cruiseAltitude)
  local o,d=ident(origin),ident(destination); if o=="" or d=="" then return false,"invalid_airport" end
  local ca=tonumber(cruiseAltitude); if ca and (not finite(ca) or ca<0 or ca>60000) then return false,"invalid_cruise_altitude" end
  local clean={}; for i=1,#route do local w=copyWaypoint(route[i]); if not w then return false,"invalid_waypoint_"..i end; clean[i]=w end
- local x=self.state:Get(); x.FMC=x.FMC or {}; x.FMC.Origin=o; x.FMC.Destination=d; x.FMC.Route=clean; x.FMC.CruiseAltitude=ca; x.FMC.Active=#clean>0; x.Navigation.Route=clean; x.Navigation.ActiveWaypoint=1; x.Navigation.RouteComplete=false; return true
+ local x=self.state:Get(); x.FMC=x.FMC or {}; x.FMC.Origin=o; x.FMC.Destination=d; x.FMC.Route=clean; x.FMC.CruiseAltitude=ca; x.FMC.Active=#clean>0; x.FMC.ActiveWaypoint=1; x.FMC.RouteComplete=#clean==0; x.Navigation.Route=clean; x.Navigation.ActiveWaypoint=1; x.Navigation.RouteComplete=#clean==0; return true
 end
 return FMC
