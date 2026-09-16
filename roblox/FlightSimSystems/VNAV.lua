@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v1.3
+-- FlightSim VNAV vertical + speed guidance v1.4
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local FT_PER_M=3.28084
@@ -48,22 +48,18 @@ function VNAV:Step(dt)
  local descentDistance=0
  if target and altitude>target then descentDistance=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M) end
  local todDistance=nil
- if target and altitude>target then
-  if altitude-target>tolerance then
-   -- If the active waypoint is the lower constraint, descent must begin before reaching it.
-   todDistance=math.max(0,distance-descentDistance)
-   -- Otherwise look ahead for the first downstream lower constraint and calculate its TOD.
-   if target>=altitude-tolerance then
-    local cumulative=0
-    for j=index+1,#route do
-     local nextWp=route[j]; local nextAltitude=nextWp and tonumber(nextWp.Altitude)
-     local leg=routeDistanceTo(route,j-1,j)
-     if leg==nil then break end
-     cumulative=cumulative+leg
-     if finite(nextAltitude) and nextAltitude<altitude-tolerance then
-      local required=math.max(0,(altitude-nextAltitude)/math.tan(math.rad(3))/FT_PER_M); todDistance=math.max(0,cumulative-required); break
-     end
-    end
+ if target and altitude>target and altitude-target>tolerance then
+  -- The active lower constraint determines the descent required before reaching it.
+  todDistance=math.max(0,distance-descentDistance)
+ elseif target and altitude<=target+tolerance then
+  -- At or below the active target, look ahead for the first lower constraint.
+  local cumulative=0
+  for j=index+1,#route do
+   local nextWp=route[j]; local nextAltitude=nextWp and tonumber(nextWp.Altitude); local leg=routeDistanceTo(route,j-1,j)
+   if leg==nil then break end
+   cumulative=cumulative+leg
+   if finite(nextAltitude) and nextAltitude<altitude-tolerance then
+    local required=math.max(0,(altitude-nextAltitude)/math.tan(math.rad(3))/FT_PER_M); todDistance=math.max(0,cumulative-required); break
    end
   end
  end
