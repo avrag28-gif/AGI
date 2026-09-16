@@ -1,4 +1,5 @@
--- FlightSim cross-system failure propagation contract tests v0.1
+-- FlightSim cross-system failure propagation contract tests v0.2
+-- Verifies one-way ownership: Failures declares the fault; subsystems apply physical consequences.
 local FailureSchema=require(script.Parent.FailureSchema)
 local Failures=require(script.Parent.Failures)
 local Engine=require(script.Parent.Engine)
@@ -8,7 +9,7 @@ local function check(ok,msg) assert(ok,msg) end
 local function state(data) return {data=data,Get=function(self)return self.data end} end
 local function run()
  local s=state({
-  Engines={[1]={Running=true,N2=60,N1=70,FuelOn=true,Ignition=true,Starter=false,Thrust=50000},[2]={Running=true,N2=60,N1=70,FuelOn=true,Ignition=true,Starter=false,Thrust=50000}},
+  Engines={[1]={Running=true,N2=60,N1=70,FuelOn=true,Ignition=true,Starter=false,Thrust=50000,GeneratorAvailable=true},[2]={Running=true,N2=60,N1=70,FuelOn=true,Ignition=true,Starter=false,Thrust=50000,GeneratorAvailable=true}},
   APU={Running=true,GeneratorAvailable=true,RPM=95},
   Electrical={Bus1=true,Bus2=true,APU=true},
   Failures={},
@@ -18,8 +19,11 @@ local function run()
  FailureSchema.Apply(s.data)
  local failures=Failures.new(s); local engine=Engine.new(s); local bleed=BleedAir.new(s); local ice=AntiIce.new(s)
  s.data.Failures.Engines[1].Active=true
- engine:Step(1); failures:Step(1); bleed:Step(1); ice:Step(1)
- check(s.data.Engines[1].Running==false,"failed engine must be shut down")
+ failures:Step(1)
+ check(s.data.Engines[1].Running==true and s.data.Engines[1].Thrust==50000,"failure manager must not own engine physics")
+ check(s.data.FailureEffects.Engine1Failed==true,"engine failure effect missing")
+ engine:Step(1); bleed:Step(1); ice:Step(1)
+ check(s.data.Engines[1].Running==false,"failed engine must be shut down by Engine")
  check(s.data.Engines[1].Thrust==0,"failed engine thrust must be zero")
  check(s.data.BleedAir.Engine1Source==false,"failed engine must lose bleed source")
  check(s.data.BleedAir.Engine2Source==true,"healthy engine must retain bleed source")
