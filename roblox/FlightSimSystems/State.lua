@@ -1,4 +1,4 @@
--- FlightSim authoritative aircraft state v2.8
+-- FlightSim authoritative aircraft state v2.9
 -- Guidance command outputs remain nil until an active guidance subsystem owns them.
 local State={}; State.__index=State
 local function engineState() return {N1=0,N2=0,EGT=20,OilPressure=0,FuelFlow=0,Thrust=0,Running=false,Starter=false,FuelOn=false,Ignition=false,GeneratorAvailable=false,StartFailed=false,Reverse=false} end
