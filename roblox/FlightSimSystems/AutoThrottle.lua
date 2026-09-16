@@ -1,36 +1,53 @@
--- FlightSim autothrottle speed-management foundation v0.2
+-- FlightSim autothrottle speed-management controller v0.3
 -- Closed-loop game simulation; not certified Boeing autothrottle logic.
+local Config=require(script.Parent.Config)
 local AutoThrottle={}; AutoThrottle.__index=AutoThrottle
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
 local function slew(current,target,rate,dt) local d=math.max(0,rate)*math.max(0,tonumber(dt) or 0); if target>current then return math.min(target,current+d) else return math.max(target,current-d) end end
+local function engineAvailable(e) return e and (e.Running==true or (finite(e.N1) and e.N1>0)) and e.StartFailed~=true end
 function AutoThrottle.new(state) return setmetatable({state=state},AutoThrottle) end
 function AutoThrottle:SetEnabled(enabled)
- local x=self.state:Get(); x.AutoThrottle=x.AutoThrottle or {Enabled=false,TargetSpeed=nil,SpeedError=0,ThrottleCommand={[1]=0,[2]=0},Mode="OFF"}; x.AutoThrottle.Enabled=enabled==true
+ local x=self.state:Get(); x.AutoThrottle=x.AutoThrottle or {Enabled=false,Active=false,TargetSpeed=nil,SpeedError=0,ThrottleCommand={[1]=0,[2]=0},Mode="OFF",Protection="NONE"}
+ x.AutoThrottle.Enabled=enabled==true
+ x.AutoThrottle.Active=false
+ x.AutoThrottle.Protection="NONE"
  if not x.AutoThrottle.Enabled then x.AutoThrottle.Mode="OFF"; x.AutoThrottle.TargetSpeed=nil end
  return true
 end
 function AutoThrottle:Step(dt)
  local x=self.state:Get(); local ap=x.Autopilot or {}; local v=x.VNAV or {}; local a=x.AutoThrottle or {}
- x.AutoThrottle=a; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}
+ x.AutoThrottle=a; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}; a.Active=false; a.Protection=a.Protection or "NONE"
  local target=nil
  if a.Enabled and ap.Enabled then
   if v.Mode=="VNAV" and finite(v.TargetSpeed) then target=v.TargetSpeed elseif finite(ap.TargetSpeed) then target=ap.TargetSpeed end
  end
  if not target then
-  a.Enabled=false; a.TargetSpeed=nil; a.SpeedError=0; a.Mode="OFF"; a.ThrottleCommand[1]=x.Throttle[1] or 0; a.ThrottleCommand[2]=x.Throttle[2] or 0; return true
+  a.Enabled=false; a.TargetSpeed=nil; a.SpeedError=0; a.Mode="OFF"; a.Protection="NONE"; a.ThrottleCommand[1]=x.Throttle[1] or 0; a.ThrottleCommand[2]=x.Throttle[2] or 0; return true
  end
  target=clamp(target,60,350)
  local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0); local error=target-speed
+ local maxAirspeed=tonumber(Config.MaxAirspeed) or 360
  local raw=clamp(0.50+error/80,0,1)
+ local protection="NONE"
+ if x.StallWarning==true or speed<target-25 then raw=1; protection="UNDERSPEED" elseif speed>maxAirspeed-10 then raw=0; protection="OVERSPEED" end
+ local maxThrust=tonumber(Config.MaxThrust) or math.huge
  local left=x.Engines and x.Engines[1]; local right=x.Engines and x.Engines[2]
- local leftAvailable=left and (left.Running==true or left.N1>0) and not (left.StartFailed==true); local rightAvailable=right and (right.Running==true or right.N1>0) and not (right.StartFailed==true)
- if not leftAvailable and not rightAvailable then a.Enabled=false; a.Mode="NO_ENGINE"; a.TargetSpeed=target; a.SpeedError=error; return true end
+ local leftAvailable=engineAvailable(left); local rightAvailable=engineAvailable(right)
+ if not leftAvailable and not rightAvailable then a.Enabled=false; a.Mode="NO_ENGINE"; a.Active=false; a.TargetSpeed=target; a.SpeedError=error; a.Protection="NO_ENGINE"; return true end
+ local availableCount=(leftAvailable and 1 or 0)+(rightAvailable and 1 or 0)
+ local thrustScale=1
+ if finite(maxThrust) and maxThrust>0 then
+  local currentTotal=(left and tonumber(left.Thrust) or 0)+(right and tonumber(right.Thrust) or 0)
+  if raw>0 and currentTotal>maxThrust then thrustScale=clamp(maxThrust/currentTotal,0,1) end
+ end
+ raw=clamp(raw*thrustScale,0,1)
  local rate=0.35
  a.ThrottleCommand[1]=slew(tonumber(a.ThrottleCommand[1]) or 0,leftAvailable and raw or 0,rate,dt)
  a.ThrottleCommand[2]=slew(tonumber(a.ThrottleCommand[2]) or 0,rightAvailable and raw or 0,rate,dt)
  x.Throttle[1]=a.ThrottleCommand[1]; x.Throttle[2]=a.ThrottleCommand[2]
- a.TargetSpeed=target; a.SpeedError=error; a.Mode=(v.Mode=="VNAV" and "VNAV_SPEED" or "SPEED")
+ a.Active=true; a.TargetSpeed=target; a.SpeedError=error; a.Protection=protection
+ a.Mode=(v.Mode=="VNAV" and "VNAV_SPEED" or (availableCount==1 and "SINGLE_ENGINE_SPEED" or "SPEED"))
  return true
 end
 return AutoThrottle
