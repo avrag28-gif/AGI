@@ -1,4 +1,4 @@
--- FlightSim aerodynamic / ground dynamics foundation v1.1
+-- FlightSim aerodynamic / ground dynamics foundation v1.2
 -- Game simulation model; coefficients are tunable approximations, not certified aircraft data.
 local Config=require(script.Parent.Config)
 local Physics={}; Physics.__index=Physics
@@ -43,9 +43,14 @@ function Physics:Step(dt)
  local qFactor=clamp(speedKts/140,0.15,1.2); local controlAuthority=clamp(math.max(x.Hydraulic.A or 0,x.Hydraulic.B or 0)/1800,0.2,1)
  local elevator=clamp(s.Elevator or 0,-1,1)
  if ground then local rotationFactor=clamp((speedKts-65)/25,0,1); elevator*=0.25+0.75*rotationFactor end
- local pitchRate=elevator*9*qFactor*controlAuthority; local rollRate=(s.Aileron or 0)*28*qFactor*controlAuthority; local yawRate=(s.Rudder or 0)*9*qFactor*controlAuthority
+ local pitchRate=elevator*9*qFactor*controlAuthority; local rollRate=(s.Aileron or 0)*28*qFactor*controlAuthority; local rudderYawRate=(s.Rudder or 0)*9*qFactor*controlAuthority
  local stability=clamp((aoa-2.5)*0.22,-4,4); if ground then stability=0 end
- x.Pitch=clamp((x.Pitch or 0)+(pitchRate-stability)*dt,-35,35); x.Roll=clamp((x.Roll or 0)+rollRate*dt,-75,75); x.Yaw=approach(x.Yaw or 0,yawRate*0.5,8,dt); x.Heading=wrap((x.Heading or 0)+((x.Roll or 0)*0.10+(x.Yaw or 0))*dt)
+ x.Pitch=clamp((x.Pitch or 0)+(pitchRate-stability)*dt,-35,35); x.Roll=clamp((x.Roll or 0)+rollRate*dt,-75,75)
+ local groundSteeringRate=ground and ((x.GroundSteering and x.GroundSteering.YawRate) or 0) or 0
+ local yawRate=ground and groundSteeringRate or rudderYawRate
+ x.Yaw=approach(x.Yaw or 0,yawRate*0.5,8,dt)
+ local headingRate=ground and yawRate or ((x.Roll or 0)*0.10+(x.Yaw or 0))
+ x.Heading=wrap((x.Heading or 0)+headingRate*dt)
  local freeVerticalAccel=(lift-weight*math.cos(math.rad(x.Roll or 0)))/math.max(mass,1); local freeVerticalSpeed=(x.VerticalSpeed or 0)+freeVerticalAccel*dt
  freeVerticalSpeed*=clamp(1-0.08*math.abs(x.Roll or 0)/45,0.6,1)
  local liftRatio=lift/math.max(weight,1); local canLiftOff=ground and speedKts>=90 and liftRatio>=0.92 and freeVerticalSpeed>0.5
