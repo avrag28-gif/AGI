@@ -1,4 +1,4 @@
--- FlightSim aerodynamic / ground dynamics foundation v1.4
+-- FlightSim aerodynamic / ground dynamics foundation v1.5
 -- Game simulation model; coefficients are tunable approximations, not certified aircraft data.
 local Config=require(script.Parent.Config)
 local Physics={}; Physics.__index=Physics
@@ -19,7 +19,8 @@ function Physics:Step(dt)
  local leftBrake=clamp((x.Brakes and x.Brakes.LeftPressure) or brakePressure,0,1)
  local rightBrake=clamp((x.Brakes and x.Brakes.RightPressure) or brakePressure,0,1)
  local wingArea=125.0; local rho=1.225*math.exp(-math.max(x.Altitude or 0,0)/8500)
- local trim=clamp(x.TrimPitch or 0,-8,8); local aoa=clamp((x.Pitch or 0)-trim,-20,30)
+ local trim=clamp(x.TrimPitch or 0,-8,8)
+ local aoa=clamp((x.Pitch or 0)-trim,-20,30)
  local flapLift=0.52*flap+0.20*flap*flap; local flapDrag=0.025*flap+0.035*flap*flap
  local cl=0.45+0.085*aoa+flapLift; local stallAoA=15
  local stallRatio=clamp((math.abs(aoa)-stallAoA)/8,0,1); cl*=1-0.75*stallRatio
@@ -51,37 +52,45 @@ function Physics:Step(dt)
  local pitchControl=elevator*9*qFactor*hydraulicAuthority
  local rollControl=aileron*28*qFactor*hydraulicAuthority
  local rudderControl=rudder*9*qFactor*hydraulicAuthority
- local stability=clamp((aoa-2.5)*0.22,-4,4); if ground then stability=0 end
+ -- Longitudinal static stability: the aircraft naturally tends back toward a
+ -- trimmed angle of attack instead of holding an arbitrary pitch attitude.
+ local trimAoA=2.5+clamp(flap*1.5,0,1.5)
+ local aoaError=aoa-trimAoA
+ local staticPitchStability=clamp(aoaError*0.30,-7,7)
+ -- Speed stability adds a small nose-down tendency when materially above the
+ -- trimmed speed and nose-up tendency when materially below it. This remains
+ -- deliberately bounded because the full mass/thrust/CG model comes later.
+ local referenceSpeed=clamp(125+flap*20,85,180)
+ local speedError=(speedKts-referenceSpeed)/35
+ local speedStability=clamp(speedError*0.65,-3.5,3.5)
  local pitchRate=x.PitchRate or 0; local rollRate=x.RollRate or 0; local yawRate=x.YawRate or x.Yaw or 0
  if ground then
   local groundYaw=(x.GroundSteering and x.GroundSteering.YawRate) or 0
   yawRate=groundYaw
   rollRate=approach(rollRate,rollControl,8,dt)
-  pitchRate=approach(pitchRate,pitchControl-stability,7,dt)
+  pitchRate=approach(pitchRate,pitchControl-staticPitchStability,7,dt)
   x.Sideslip=approach(x.Sideslip or 0,0,4,dt)
  else
-  -- Coordinated airborne turn model: bank produces the turn, while rudder and stability
-  -- shape sideslip and yaw rate. Aileron creates a small adverse-yaw tendency.
   local bank=clamp(x.Roll or 0,-70,70)
   local bankRad=math.rad(bank)
   local turnRate=0
   if speedMS>15 then turnRate=math.deg(9.80665*math.tan(bankRad)/speedMS) end
   turnRate=clamp(turnRate,-12,12)
-  local desiredBeta=clamp(rudder*4.5 + turnRate*0.10 - rollControl*0.035,-10,10)
+  local desiredBeta=clamp(rudder*4.5+turnRate*0.10-rollControl*0.035,-10,10)
   local beta=x.Sideslip or x.Beta or 0
-  local betaRate=(desiredBeta-beta)*2.8 - beta*0.55 - yawRate*0.045
+  local betaRate=(desiredBeta-beta)*2.8-beta*0.55-yawRate*0.045
   beta=clamp(beta+betaRate*dt,-12,12)
   local weathercock=-beta*0.95
   local yawDamping=-yawRate*0.72
   local adverseYaw=-aileron*1.4*qFactor*hydraulicAuthority
-  local rudderYaw=rudderControl
   local coordinatedYaw=turnRate*0.32
-  local targetYawRate=coordinatedYaw+rudderYaw+weathercock+yawDamping+adverseYaw
+  local targetYawRate=coordinatedYaw+rudderControl+weathercock+yawDamping+adverseYaw
   yawRate=approach(yawRate,targetYawRate,5.5,dt)
   local rollDamping=-rollRate*0.58*qFactor
   rollRate=approach(rollRate,rollControl+rollDamping,7.0,dt)
   local pitchDamping=-pitchRate*0.35*qFactor
-  pitchRate=approach(pitchRate,pitchControl-stability+pitchDamping,5.5,dt)
+  local longitudinalMoment=pitchControl-staticPitchStability-speedStability+pitchDamping
+  pitchRate=approach(pitchRate,longitudinalMoment,5.5,dt)
   x.Sideslip=beta; x.Beta=beta
   x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1)
  end
