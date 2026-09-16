@@ -1,4 +1,4 @@
--- FlightSim autopilot / VOR / ILS / VNAV controller v1.3
+-- FlightSim autopilot / VOR / ILS / VNAV controller v1.4
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -25,7 +25,8 @@ function Autopilot:Step(dt)
   self.bankCommand=slew(self.bankCommand,0,2.5,dt); self.pitchCommand=slew(self.pitchCommand,0,2.5,dt); ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand; ap.Mode="OFF"; return true
  end
  local mode=nav.Mode
- if mode=="APP" and ils and ils.Available and ils.LocalizerValid and nav.NAV1Receiver=="ILS" then
+ local appReady=mode=="APP" and ils and ils.Available and ils.LocalizerValid and nav.NAV1Receiver=="ILS"
+ if appReady then
   ap.ILSLocalizerCaptured=ils.LocalizerCaptured==true; ap.ILSGlideSlopeCaptured=ils.GlideSlopeCaptured==true and ap.ILSLocalizerCaptured
   if ap.ILSGlideSlopeCaptured then ap.Mode="APP_GS" elseif ap.ILSLocalizerCaptured then ap.Mode="APP_LOC" else ap.Mode="APP_ARMED" end
  elseif mode=="VOR" and vor and vor.Available and nav.NAV1Receiver=="VOR" then ap.Mode="VOR"
@@ -44,10 +45,13 @@ function Autopilot:Step(dt)
  local bankLimit=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 0.75 or 0.65
  local bankGain=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 1/12 or 1/30
  local targetBank=clamp(he*bankGain,-bankLimit,bankLimit)
- -- ILS localizer signal is already signed: negative means left/right correction according to runway geometry.
- if ap.Mode=="APP_LOC" or ap.Mode=="APP_GS" or ap.Mode=="APP_ARMED" then
+ -- Approach geometry defines localizer as signed lateral displacement normalized by localizer length.
+ -- Negative localizer means the aircraft is left of the runway centerline for the runway heading convention.
+ if ap.Mode=="APP_LOC" or ap.Mode=="APP_GS" then
   local loc=finite(ils and ils.Localizer) and ils.Localizer or 0
   targetBank=clamp(loc*1.8,-bankLimit,bankLimit)
+ elseif ap.Mode=="APP_ARMED" then
+  targetBank=clamp(he/30,-bankLimit,bankLimit)
  end
  local altitudeError=targetA-altitude
  local pitchLimit=(ap.Mode=="APP_GS") and 0.32 or 0.45
