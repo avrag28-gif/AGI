@@ -1,4 +1,4 @@
--- FlightSim navigation / LNAV / VOR / ILS guidance v0.9
+-- FlightSim navigation / LNAV / VOR / ILS guidance v1.0
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -24,14 +24,15 @@ function Navigation:Step(dt)
   elseif nav.DistanceToWaypoint<=capture and i==#route then nav.RouteComplete=true end
   local desired=nav.BearingToWaypoint
   if nav.Mode=="LNAV" then
-   local pathCourse=(prev and typeof(prev.Position)=="Vector3") and segmentCourse(prev.Position,wp.Position) or desired; local xte=tonumber(nav.CrossTrackError) or 0; local intercept=clamp(-xte*0.02,-30,30); if nav.DistanceToWaypoint<capture then intercept=intercept*(nav.DistanceToWaypoint/capture) end; desired=wrap360(pathCourse+intercept)
+   local pathCourse=(prev and typeof(prev.Position)=="Vector3") and segmentCourse(prev.Position,wp.Position) or desired; local xte=tonumber(nav.CrossTrackError) or 0
+   -- Cross-track error is positive on the left side of the path under the 0-degree/+Z convention.
+   -- Positive heading correction turns right toward the path.
+   local intercept=clamp(xte*0.02,-30,30); if nav.DistanceToWaypoint<capture then intercept=intercept*(nav.DistanceToWaypoint/capture) end; desired=wrap360(pathCourse+intercept)
   elseif nav.Mode=="VOR" then
    local vor=nav.NAV1Signal; if nav.NAV1Receiver=="VOR" and vor and vor.Available then desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8) else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
   elseif nav.Mode=="APP" then
    local ils=nav.NAV1Signal
    if nav.NAV1Receiver=="ILS" and ils and ils.Available and ils.LocalizerValid then
-    -- Positive localizer means left of the runway centerline for the 0-degree/+Z convention.
-    -- Positive heading correction turns right toward the centerline.
     local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28; desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or x.Heading)+intercept)
     if ils.GlideSlopeValid and finite(ils.DesiredAltitude) then nav.CommandAltitude=ils.DesiredAltitude end
    else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
