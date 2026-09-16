@@ -1,11 +1,11 @@
--- FlightSim server command router v1.7
+-- FlightSim server command router v1.8
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
-local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true}
+local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,MCPSpeed=true,MCPVerticalSpeed=true,AutoThrottle=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true}
 local CONTROL_AXES={Aileron=true,Elevator=true,Rudder=true}
 local function finite(n) return type(n)=="number" and n==n and n>-math.huge and n<math.huge end
 local function engineIndex(v) local i=tonumber(v); if i~=1 and i~=2 then return nil end return i end
-function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,lastCommand={}},CommandRouter) end
+function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach,getAutoThrottle) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,getAutoThrottle=getAutoThrottle,lastCommand={}},CommandRouter) end
 function CommandRouter:_rateOK(p) local now=os.clock(); local key=p.UserId; local r=self.lastCommand[key]; if not r then self.lastCommand[key]={t=now,n=1}; return true end; if now-r.t>=1 then r.t=now; r.n=1; return true end; if r.n>=(tonumber(Config.CommandRateLimit) or 30) then return false end; r.n+=1; return true end
 function CommandRouter:Handle(player,id,command,a,b)
  if type(command)~="string" or not ALLOWED[command] then return false,"command_not_allowed" end
@@ -31,7 +31,7 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="VORCourse" then local c=tonumber(a); if not finite(c) then return false,"invalid_vor_course" end; x.Navigation.VORCourse=(c%360+360)%360
  elseif command=="AP" then x.Autopilot.Enabled=a==true
  elseif command=="APTarget" then local alt,hdg=tonumber(a),tonumber(b); if alt and not finite(alt) then return false,"invalid_altitude" end; if hdg and not finite(hdg) then return false,"invalid_heading" end; if alt then x.Autopilot.TargetAltitude=math.clamp(alt,0,60000) end; if hdg then x.Autopilot.TargetHeading=(hdg%360+360)%360 end
- elseif command=="NavMode" then local m=string.upper(tostring(a)); if m~="HDG" and m~="LNAV" and m~="APP" then return false,"invalid_nav_mode" end; x.Navigation.Mode=m
+ elseif command=="NavMode" then local m=string.upper(tostring(a)); if m~="HDG" and m~="LNAV" and m~="APP" and m~="VOR" then return false,"invalid_nav_mode" end; x.Navigation.Mode=m
  elseif command=="VNAVMode" then local m=string.upper(tostring(a)); if m~="VNAV" and m~="OFF" then return false,"invalid_vnav_mode" end; x.VNAV.Mode=m
  elseif command=="FMCPage" then local f=self.getFMC and self.getFMC(id); if not f then return false,"fmc_not_found" end; return f:SetPage(a)
  elseif command=="FMCScratchpad" then local f=self.getFMC and self.getFMC(id); if not f then return false,"fmc_not_found" end; return f:SetScratchpad(a)
@@ -43,8 +43,10 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="WeatherRadar" then x.Avionics.WeatherRadarEnabled=a==true
  elseif command=="MCPHeading" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetHeading(a)
  elseif command=="MCPAltitude" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetAltitude(a)
- elseif command=="MCPspeed" then local v=tonumber(a); if not finite(v) then return false,"invalid_mcp_speed" end; x.Autopilot.TargetSpeed=math.clamp(v,60,350)
+ elseif command=="MCPspeed" or command=="MCPSpeed" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetSpeed(a)
+ elseif command=="MCPVerticalSpeed" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetVerticalSpeed(a)
  elseif command=="MCPMode" then local m=self.getMCP and self.getMCP(id); if not m then return false,"mcp_not_found" end; return m:SetMode(a)
+ elseif command=="AutoThrottle" then local at=self.getAutoThrottle and self.getAutoThrottle(id); if not at then return false,"autothrottle_not_found" end; return at:SetEnabled(a==true)
  elseif command=="ApproachRunway" then local ap=self.getApproach and self.getApproach(id); if not ap then return false,"approach_not_found" end; return ap:SetRunway(a)
  elseif command=="Trim" then local v=tonumber(a); if not finite(v) then return false,"invalid_trim" end; x.Controls.Trim=math.clamp(v,-1,1) end
  return true
