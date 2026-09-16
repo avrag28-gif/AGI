@@ -1,4 +1,4 @@
--- FlightSim autopilot / VOR / ILS / vertical mode controller v0.9
+-- FlightSim autopilot / VOR / ILS / VNAV speed-aware controller v1.0
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -9,8 +9,8 @@ local function firstFinite(...) for i=1,select("#",...) do local v=select(i,...)
 function Autopilot.new(state) return setmetatable({state=state,bankCommand=0,pitchCommand=0},Autopilot) end
 function Autopilot:Step(dt)
  local x=self.state:Get(); local ap=x.Autopilot or {}; local nav=x.Navigation or {}; local v=x.VNAV or {}; local ils=nav.ILS; local vor=nav.VOR
- local altitude=finite(x.Altitude) and x.Altitude or 0; local heading=finite(x.Heading) and x.Heading%360 or 0
- ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false
+ local altitude=finite(x.Altitude) and x.Altitude or 0; local heading=finite(x.Heading) and x.Heading%360 or 0; local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
+ ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false; ap.SpeedError=0; ap.SpeedCommand=nil
  if not ap.Enabled then ap.GoAround=false; self.bankCommand=slew(self.bankCommand,0,2.5,dt); self.pitchCommand=slew(self.pitchCommand,0,2.5,dt); ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand; ap.Mode="OFF"; return true end
  if ap.GoAround then
   nav.Mode="HDG"; v.Mode="OFF"; if ils then ils.LocalizerCaptured=false; ils.GlideSlopeCaptured=false end
@@ -34,6 +34,10 @@ function Autopilot:Step(dt)
  local targetH=firstFinite(nav.CommandHeading,ap.TargetHeading,heading)%360
  local targetA=firstFinite(v.Mode=="VNAV" and v.TargetAltitude or nil,nav.CommandAltitude,ap.TargetAltitude,altitude)
  if ap.Mode=="APP_GS" or ap.Mode=="APP_LOC" or ap.Mode=="APP_ARMED" then targetH=firstFinite(nav.CommandHeading,heading)%360 end
+ local targetSpeed=firstFinite(v.Mode=="VNAV" and v.TargetSpeed or nil,ap.TargetSpeed)
+ if finite(targetSpeed) then
+  targetSpeed=clamp(targetSpeed,60,350); ap.SpeedError=targetSpeed-speed; ap.SpeedCommand=targetSpeed
+ end
  local he=err(targetH,heading)
  local bankLimit=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 0.75 or 0.65
  local bankGain=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 1/12 or 1/30
@@ -41,22 +45,12 @@ function Autopilot:Step(dt)
  local altitudeError=targetA-altitude
  local pitchLimit=(ap.Mode=="APP_GS") and 0.32 or 0.45
  local targetPitch
- if ap.Mode=="VS" then
-  targetPitch=clamp((tonumber(ap.TargetVerticalSpeed) or 0)/2500,-pitchLimit,pitchLimit)
- elseif ap.Mode=="ALT_HOLD" then
-  targetPitch=clamp(altitudeError/900,-0.25,0.25)
- elseif ap.Mode=="LCHG" then
-  -- Level-change foundation: use selected altitude as the vertical target while
-  -- airspeed/thrust scheduling remains owned by the flight/engine controllers.
-  targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit)
- elseif ap.Mode=="VNAV" then
-  targetPitch=clamp((v.CommandVerticalSpeed or 0)/2500,-pitchLimit,pitchLimit)
- elseif ap.Mode=="APP_GS" then
-  local gsError=finite(ils and ils.GlideSlopeError) and ils.GlideSlopeError or 0
-  targetPitch=clamp(gsError/3,-pitchLimit,pitchLimit)
- else
-  targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit)
- end
+ if ap.Mode=="VS" then targetPitch=clamp((tonumber(ap.TargetVerticalSpeed) or 0)/2500,-pitchLimit,pitchLimit)
+ elseif ap.Mode=="ALT_HOLD" then targetPitch=clamp(altitudeError/900,-0.25,0.25)
+ elseif ap.Mode=="LCHG" then targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit)
+ elseif ap.Mode=="VNAV" then targetPitch=clamp((v.CommandVerticalSpeed or 0)/2500,-pitchLimit,pitchLimit)
+ elseif ap.Mode=="APP_GS" then local gsError=finite(ils and ils.GlideSlopeError) and ils.GlideSlopeError or 0; targetPitch=clamp(gsError/3,-pitchLimit,pitchLimit)
+ else targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit) end
  self.bankCommand=slew(self.bankCommand,targetBank,2.2,dt); self.pitchCommand=slew(self.pitchCommand,targetPitch,1.8,dt)
  ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand
  return true
