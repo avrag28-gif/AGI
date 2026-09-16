@@ -1,5 +1,5 @@
--- FlightSim NAV receiver manager v0.1
--- Centralizes NAV1/NAV2 receiver ownership. NAV1 may select ILS or VOR; NAV2 is VOR-only.
+-- FlightSim NAV receiver manager v0.2
+-- Centralizes NAV1/NAV2 receiver ownership. Signal producers populate candidate data first.
 local NAVReceiver={}; NAVReceiver.__index=NAVReceiver
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
 local function match(a,b) return finite(a) and finite(b) and math.abs(a-b)<0.005 end
@@ -10,18 +10,19 @@ function NAVReceiver.new(state) return setmetatable({state=state},NAVReceiver) e
 function NAVReceiver:Step(dt)
  local x=self.state:Get(); local n=x.Navigation or {}; local powered=x.Avionics and x.Avionics.Radios==true
  local r=n.ApproachRunway; local tuned1=tonumber(x.Radios and x.Radios.NAV1); local tuned2=tonumber(x.Radios and x.Radios.NAV2)
- if not powered then clear(n,1); clear(n,2); n.NAV1Receiver="NONE"; n.NAV2Receiver="NONE"; n.ILS=nil; n.VOR=nil; n.VOR2=nil; return true end
- -- NAV1 priority is explicit: a valid tuned ILS is selected first; otherwise VOR may be selected.
+ if not powered then clear(n,1); clear(n,2); n.ILS=nil; n.VOR=nil; n.VOR2=nil; return true end
  local ilsValid=r and finite(r.ILSFrequency) and match(tuned1,r.ILSFrequency)
- if ilsValid then n.NAV1Receiver="ILS"; n.NAV1Ident=r.ILSIdent; n.NAV1Frequency=r.ILSFrequency
- else
-  local station=n.VORStation
-  if station and match(tuned1,station.Frequency) then n.NAV1Receiver="VOR"; n.NAV1Ident=station.Ident; n.NAV1Frequency=station.Frequency
-  else clear(n,1) end
- end
- -- NAV2 is independently assigned to its configured VOR station.
- local station2=n.VORStationNAV2
- if station2 and match(tuned2,station2.Frequency) then n.NAV2Receiver="VOR"; n.NAV2Ident=station2.Ident; n.NAV2Frequency=station2.Frequency else clear(n,2) end
+ local vor1=n.VORStation and match(tuned1,n.VORStation.Frequency) and n.VOR
+ local vor2=n.VORStationNAV2 and match(tuned2,n.VORStationNAV2.Frequency) and n.VOR2
+ -- Source selection follows the active guidance request: APP prefers ILS; VOR explicitly prefers VOR.
+ if n.Mode=="APP" and ilsValid then n.NAV1Receiver="ILS"; n.NAV1Ident=r.ILSIdent; n.NAV1Frequency=r.ILSFrequency
+ elseif n.Mode=="VOR" and vor1 then n.NAV1Receiver="VOR"; n.NAV1Ident=n.VOR.Ident; n.NAV1Frequency=n.VOR.Frequency
+ elseif ilsValid then n.NAV1Receiver="ILS"; n.NAV1Ident=r.ILSIdent; n.NAV1Frequency=r.ILSFrequency
+ elseif vor1 then n.NAV1Receiver="VOR"; n.NAV1Ident=n.VOR.Ident; n.NAV1Frequency=n.VOR.Frequency
+ else clear(n,1) end
+ if vor2 then n.NAV2Receiver="VOR"; n.NAV2Ident=n.VOR2.Ident; n.NAV2Frequency=n.VOR2.Frequency else clear(n,2) end
+ if n.NAV1Receiver=="ILS" then n.NAV1Signal=n.ILS elseif n.NAV1Receiver=="VOR" then n.NAV1Signal=n.VOR else n.NAV1Signal=nil end
+ if n.NAV2Receiver=="VOR" then n.NAV2Signal=n.VOR2 end
  return true
 end
 return NAVReceiver
