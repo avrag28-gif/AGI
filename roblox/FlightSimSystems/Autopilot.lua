@@ -1,4 +1,4 @@
--- FlightSim autopilot / VOR / ILS / VNAV speed-aware controller v1.0
+-- FlightSim autopilot / VOR / ILS / VNAV speed-aware controller v1.1
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -11,14 +11,17 @@ function Autopilot:Step(dt)
  local x=self.state:Get(); local ap=x.Autopilot or {}; local nav=x.Navigation or {}; local v=x.VNAV or {}; local ils=nav.ILS; local vor=nav.VOR
  local altitude=finite(x.Altitude) and x.Altitude or 0; local heading=finite(x.Heading) and x.Heading%360 or 0; local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
  ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false; ap.SpeedError=0; ap.SpeedCommand=nil
- if not ap.Enabled then ap.GoAround=false; self.bankCommand=slew(self.bankCommand,0,2.5,dt); self.pitchCommand=slew(self.pitchCommand,0,2.5,dt); ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand; ap.Mode="OFF"; return true end
  if ap.GoAround then
   nav.Mode="HDG"; v.Mode="OFF"; if ils then ils.LocalizerCaptured=false; ils.GlideSlopeCaptured=false end
   ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false; ap.Mode="GO_AROUND"
   local targetH=finite(ap.GoAroundHeading) and ap.GoAroundHeading%360 or heading; local baseAltitude=finite(ap.GoAroundAltitude) and ap.GoAroundAltitude or altitude; local targetA=math.max(baseAltitude,altitude+1000)
   ap.TargetHeading=targetH; ap.TargetAltitude=targetA; local he=err(targetH,heading); local ae=targetA-altitude
   self.bankCommand=slew(self.bankCommand,clamp(he/30,-0.65,0.65),1.8,dt); self.pitchCommand=slew(self.pitchCommand,clamp(ae/1200,-0.40,0.40),1.5,dt)
-  ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand; return true
+  ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand
+  return true
+ end
+ if not ap.Enabled then
+  self.bankCommand=slew(self.bankCommand,0,2.5,dt); self.pitchCommand=slew(self.pitchCommand,0,2.5,dt); ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand; ap.Mode="OFF"; return true
  end
  local mode=nav.Mode
  if mode=="APP" and ils and ils.Available and ils.LocalizerValid and nav.NAV1Receiver=="ILS" then
@@ -35,9 +38,7 @@ function Autopilot:Step(dt)
  local targetA=firstFinite(v.Mode=="VNAV" and v.TargetAltitude or nil,nav.CommandAltitude,ap.TargetAltitude,altitude)
  if ap.Mode=="APP_GS" or ap.Mode=="APP_LOC" or ap.Mode=="APP_ARMED" then targetH=firstFinite(nav.CommandHeading,heading)%360 end
  local targetSpeed=firstFinite(v.Mode=="VNAV" and v.TargetSpeed or nil,ap.TargetSpeed)
- if finite(targetSpeed) then
-  targetSpeed=clamp(targetSpeed,60,350); ap.SpeedError=targetSpeed-speed; ap.SpeedCommand=targetSpeed
- end
+ if finite(targetSpeed) then targetSpeed=clamp(targetSpeed,60,350); ap.SpeedError=targetSpeed-speed; ap.SpeedCommand=targetSpeed end
  local he=err(targetH,heading)
  local bankLimit=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 0.75 or 0.65
  local bankGain=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 1/12 or 1/30
