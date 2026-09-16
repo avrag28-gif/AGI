@@ -1,5 +1,5 @@
--- FlightSim fuel system v0.1
--- Server-authoritative tank state, engine feed and low-fuel/imbalance telemetry.
+-- FlightSim fuel system v0.2
+-- Server-authoritative tank accounting, engine feed, low-fuel and imbalance telemetry.
 local Fuel={}; Fuel.__index=Fuel
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function ensure(x)
@@ -25,7 +25,7 @@ function Fuel:Step(dt)
  tanks.Total=math.max(0,tanks.Left+tanks.Center+tanks.Right)
  s.LeftQuantity=tanks.Left; s.CenterQuantity=tanks.Center; s.RightQuantity=tanks.Right; s.TotalQuantity=tanks.Total
  s.LeftFeed=tanks.Left>0; s.RightFeed=tanks.Right>0; s.CenterFeed=tanks.Center>0
- s.FeedPressure=math.clamp and math.clamp((tanks.Total/30000),0,1) or clamp(tanks.Total/30000,0,1)
+ s.FeedPressure=clamp(tanks.Total/30000,0,1)
  local wingMean=(tanks.Left+tanks.Right)/2
  s.Imbalance=wingMean>0 and (tanks.Left-tanks.Right)/wingMean or 0
  s.LowFuel=tanks.Total<3000
