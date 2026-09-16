@@ -1,4 +1,4 @@
--- FlightSim engine runtime module v0.4
+-- FlightSim engine runtime module v0.5
 local Config = require(script.Parent.Config)
 local Engine = {}
 Engine.__index = Engine
@@ -17,11 +17,13 @@ end
 function Engine:Step(dt)
 	local x = self.state:Get()
 	local electrical = x.Electrical.Bus1 or x.Electrical.Bus2
+	local fuelSystem = x.FuelSystem or {}
 
 	for index = 1, 2 do
 		local e = x.Engines[index]
 		local throttle = math.clamp(tonumber(x.Throttle[index]) or 0, 0, 1)
 		local fuelAvailable = (x.Fuel.Total or 0) > 0
+		local fuelPathAvailable = fuelSystem.EngineFuelAvailable == nil or fuelSystem.EngineFuelAvailable[index] ~= false
 
 		-- Starter: N2 is driven electrically until the starter cutoff region.
 		if e.Starter and electrical and not e.Running then
@@ -30,19 +32,19 @@ function Engine:Step(dt)
 			e.N2 = approach(e.N2, e.Running and (55 + 35 * throttle) or 0, e.Running and 12 or 5, dt)
 		end
 
-		-- Start sequence: starter + fuel + ignition + sufficient N2 produces light-off.
-		if not e.Running and e.Starter and e.FuelOn and e.Ignition and fuelAvailable and e.N2 >= Config.StartN2 then
+		-- Start sequence: starter + fuel + ignition + sufficient N2 + an available feed path produces light-off.
+		if not e.Running and e.Starter and e.FuelOn and e.Ignition and fuelAvailable and fuelPathAvailable and e.N2 >= Config.StartN2 then
 			e.Running = true
-		e.StartFailed = false
+			e.StartFailed = false
 	end
 
 	-- Detect an invalid start attempt once N2 falls back without light-off.
-	if not e.Running and e.Starter and e.FuelOn and e.Ignition and not electrical then
+	if not e.Running and e.Starter and e.FuelOn and e.Ignition and (not electrical or not fuelAvailable or not fuelPathAvailable) then
 		e.StartFailed = true
 	end
 
-	-- Fuel cut or empty tanks shuts the engine down.
-	if e.Running and (not e.FuelOn or not fuelAvailable) then
+	-- Fuel cut, empty tanks, or loss of the selected feed path shuts the engine down.
+	if e.Running and (not e.FuelOn or not fuelAvailable or not fuelPathAvailable) then
 		e.Running = false
 		e.Starter = false
 	end
