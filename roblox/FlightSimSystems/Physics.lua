@@ -1,4 +1,4 @@
--- FlightSim aerodynamic / ground dynamics foundation v1.3
+-- FlightSim aerodynamic / ground dynamics foundation v1.4
 -- Game simulation model; coefficients are tunable approximations, not certified aircraft data.
 local Config=require(script.Parent.Config)
 local Physics={}; Physics.__index=Physics
@@ -44,21 +44,52 @@ function Physics:Step(dt)
  local elevator=clamp(s.Elevator or 0,-1,1)
  local aileron=clamp(s.Aileron or 0,-1,1)
  local rudder=clamp(s.Rudder or 0,-1,1)
- -- Elevator becomes progressively effective through the rotation window instead of instantly at taxi speed.
  if ground then
   local rotationAuthority=clamp((speedKts-55)/40,0.10,1)
   elevator*=rotationAuthority
  end
- local pitchRate=elevator*9*qFactor*hydraulicAuthority
- local rollRate=aileron*28*qFactor*hydraulicAuthority
- local rudderYawRate=rudder*9*qFactor*hydraulicAuthority
+ local pitchControl=elevator*9*qFactor*hydraulicAuthority
+ local rollControl=aileron*28*qFactor*hydraulicAuthority
+ local rudderControl=rudder*9*qFactor*hydraulicAuthority
  local stability=clamp((aoa-2.5)*0.22,-4,4); if ground then stability=0 end
- x.Pitch=clamp((x.Pitch or 0)+(pitchRate-stability)*dt,-35,35)
+ local pitchRate=x.PitchRate or 0; local rollRate=x.RollRate or 0; local yawRate=x.YawRate or x.Yaw or 0
+ if ground then
+  local groundYaw=(x.GroundSteering and x.GroundSteering.YawRate) or 0
+  yawRate=groundYaw
+  rollRate=approach(rollRate,rollControl,8,dt)
+  pitchRate=approach(pitchRate,pitchControl-stability,7,dt)
+  x.Sideslip=approach(x.Sideslip or 0,0,4,dt)
+ else
+  -- Coordinated airborne turn model: bank produces the turn, while rudder and stability
+  -- shape sideslip and yaw rate. Aileron creates a small adverse-yaw tendency.
+  local bank=clamp(x.Roll or 0,-70,70)
+  local bankRad=math.rad(bank)
+  local turnRate=0
+  if speedMS>15 then turnRate=math.deg(9.80665*math.tan(bankRad)/speedMS) end
+  turnRate=clamp(turnRate,-12,12)
+  local desiredBeta=clamp(rudder*4.5 + turnRate*0.10 - rollControl*0.035,-10,10)
+  local beta=x.Sideslip or x.Beta or 0
+  local betaRate=(desiredBeta-beta)*2.8 - beta*0.55 - yawRate*0.045
+  beta=clamp(beta+betaRate*dt,-12,12)
+  local weathercock=-beta*0.95
+  local yawDamping=-yawRate*0.72
+  local adverseYaw=-aileron*1.4*qFactor*hydraulicAuthority
+  local rudderYaw=rudderControl
+  local coordinatedYaw=turnRate*0.32
+  local targetYawRate=coordinatedYaw+rudderYaw+weathercock+yawDamping+adverseYaw
+  yawRate=approach(yawRate,targetYawRate,5.5,dt)
+  local rollDamping=-rollRate*0.58*qFactor
+  rollRate=approach(rollRate,rollControl+rollDamping,7.0,dt)
+  local pitchDamping=-pitchRate*0.35*qFactor
+  pitchRate=approach(pitchRate,pitchControl-stability+pitchDamping,5.5,dt)
+  x.Sideslip=beta; x.Beta=beta
+  x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1)
+ end
+ x.PitchRate=pitchRate; x.RollRate=rollRate; x.YawRate=yawRate; x.Yaw=yawRate
+ x.Pitch=clamp((x.Pitch or 0)+pitchRate*dt,-35,35)
  x.Roll=clamp((x.Roll or 0)+rollRate*dt,-75,75)
  local groundSteeringRate=ground and ((x.GroundSteering and x.GroundSteering.YawRate) or 0) or 0
- local yawRate=ground and groundSteeringRate or rudderYawRate
- x.Yaw=approach(x.Yaw or 0,yawRate*0.5,8,dt)
- local headingRate=ground and yawRate or ((x.Roll or 0)*0.10+(x.Yaw or 0))
+ local headingRate=ground and groundSteeringRate or yawRate
  x.Heading=wrap((x.Heading or 0)+headingRate*dt)
  local freeVerticalAccel=(lift-weight*math.cos(math.rad(x.Roll or 0)))/math.max(mass,1); local freeVerticalSpeed=(x.VerticalSpeed or 0)+freeVerticalAccel*dt
  freeVerticalSpeed*=clamp(1-0.08*math.abs(x.Roll or 0)/45,0.6,1)
@@ -67,7 +98,10 @@ function Physics:Step(dt)
  if canLiftOff then x.GroundContact=false; x.VerticalSpeed=freeVerticalSpeed else x.VerticalSpeed=clamp(freeVerticalSpeed,-80,80); if x.GroundContact then x.VerticalSpeed=0 end end
  if not x.GroundContact then x.Altitude=clamp((x.Altitude or 0)+x.VerticalSpeed*dt,0,Config.MaxAltitude) end
  x.AirspeedTrue=x.Airspeed/math.sqrt(math.max(rho/1.225,0.15)); x.AoA=aoa; x.StallWarning=math.abs(aoa)>=stallAoA-2 and speedKts>45
- x.Lift=lift; x.Drag=drag; x.Mass=mass; x.Weight=weight
+ x.Lift=lift; x.Drag=drag; x.Mass=mass; x.Weight=weight; x.DynamicPressure=q
+ x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor
+ x.AerodynamicDamping={Yaw=0.72*qFactor,Roll=0.58*qFactor,Pitch=0.35*qFactor}
+ if ground then x.TurnCoordination=1; x.Beta=x.Sideslip or 0 end
  local forward=CFrame.Angles(math.rad(-(x.Pitch or 0)),math.rad(x.Heading or 0),0).LookVector; x.Velocity=forward*(x.Airspeed*0.514444); x.Position+=x.Velocity*dt
  if x.GroundContact then x.Altitude=0 end
  if x.Airspeed<1 and x.GroundContact then x.Phase="Ground" elseif x.GroundContact then x.Phase="TakeoffOrLanding" else x.Phase="Airborne" end
