@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v1.5
+-- FlightSim VNAV vertical + speed guidance v1.6
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local FT_PER_M=3.28084
@@ -48,8 +48,17 @@ function VNAV:Step(dt)
   v.PathError=target-altitude
  else v.ConstraintSatisfied=true; v.PathError=0 end
  local distanceToWp=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distanceToWp*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
- local descentDistance=(target and altitude>target) and math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M) or 0
- local tod=downstreamTOD(route,index,altitude)
+ local tod=nil
+ if target and altitude>target then
+  local requiredM=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M)
+  tod=math.max(0,distanceToWp-requiredM)
+  if tod>0 and index<#route then
+   local downstream=downstreamTOD(route,index,altitude)
+   if downstream~=nil then tod=math.max(tod,downstream) end
+  end
+ elseif target and altitude<=target then
+  tod=downstreamTOD(route,index,altitude)
+ end
  if target then
   v.TopOfDescentDistance=tod
   if v.PathError>tolerance then v.Phase="CLIMB"
