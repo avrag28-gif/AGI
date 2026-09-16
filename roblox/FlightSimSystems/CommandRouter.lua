@@ -1,11 +1,11 @@
--- FlightSim server command router v2.0
+-- FlightSim server command router v2.1
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
-local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,MCPSpeed=true,MCPVerticalSpeed=true,AutoThrottle=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true,ATCCallsign=true,ATCPhase=true,ATCRequest=true,ATCReadback=true}
+local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,MCPSpeed=true,MCPVerticalSpeed=true,AutoThrottle=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true,ATCCallsign=true,ATCPhase=true,ATCRequest=true,ATCReadback=true,ATCTakeoffRequest=true,ATCLandingRequest=true,ATCEnterRunway=true,ATCReleaseRunway=true}
 local CONTROL_AXES={Aileron=true,Elevator=true,Rudder=true}
 local function finite(n) return type(n)=="number" and n==n and n>-math.huge and n<math.huge end
 local function engineIndex(v) local i=tonumber(v); if i~=1 and i~=2 then return nil end return i end
-function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach,getAutoThrottle,getATC) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,getAutoThrottle=getAutoThrottle,getATC=getATC,lastCommand={}},CommandRouter) end
+function CommandRouter.new(registry,getFMC,getRadio,getTransponder,getMCP,getApproach,getAutoThrottle,getATC,getATCRunway) return setmetatable({registry=registry,getFMC=getFMC,getRadio=getRadio,getTransponder=getTransponder,getMCP=getMCP,getApproach=getApproach,getAutoThrottle=getAutoThrottle,getATC=getATC,getATCRunway=getATCRunway,lastCommand={}},CommandRouter) end
 function CommandRouter:_rateOK(p) local now=os.clock(); local key=p.UserId; local r=self.lastCommand[key]; if not r then self.lastCommand[key]={t=now,n=1}; return true end; if now-r.t>=1 then r.t=now; r.n=1; return true end; if r.n>=(tonumber(Config.CommandRateLimit) or 30) then return false end; r.n+=1; return true end
 function CommandRouter:Handle(player,id,command,a,b)
  if type(command)~="string" or not ALLOWED[command] then return false,"command_not_allowed" end
@@ -52,7 +52,10 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="ATCCallsign" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:SetCallsign(a)
  elseif command=="ATCPhase" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:SetPhase(a)
  elseif command=="ATCRequest" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:RequestClearance(a)
- elseif command=="ATCReadback" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:Readback(a) end
+ elseif command=="ATCReadback" then local at=self.getATC and self.getATC(id); if not at then return false,"atc_not_found" end; return at:Readback(a)
+ elseif command=="ATCTakeoffRequest" or command=="ATCLandingRequest" then local r=self.getATCRunway and self.getATCRunway(id); if not r then return false,"atc_runway_not_found" end; if command=="ATCTakeoffRequest" then return r:RequestTakeoff(a) else return r:RequestLanding(a) end
+ elseif command=="ATCEnterRunway" then local r=self.getATCRunway and self.getATCRunway(id); if not r then return false,"atc_runway_not_found" end; return r:EnterRunway()
+ elseif command=="ATCReleaseRunway" then local r=self.getATCRunway and self.getATCRunway(id); if not r then return false,"atc_runway_not_found" end; return r:Release() end
  return true
 end
 return CommandRouter
