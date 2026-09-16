@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v0.7
+-- FlightSim VNAV vertical + speed guidance v0.8
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -18,20 +18,18 @@ function VNAV:Step(dt)
  local constraint=wp and string.upper(tostring(wp.AltitudeConstraint or "AT")) or "AT"
  local minAlt=wp and tonumber(wp.MinAltitude) or nil
  local maxAlt=wp and tonumber(wp.MaxAltitude) or nil
- local target
- if finite(minAlt) then target=minAlt end
- if finite(maxAlt) then target=finite(target) and math.min(target,maxAlt) or maxAlt end
- if finite(rawTarget) then
-  if constraint=="ABOVE" then target=math.max(target or rawTarget,rawTarget)
-  elseif constraint=="BELOW" then target=math.min(target or rawTarget,rawTarget)
-  else target=rawTarget end
- end
- if not finite(target) then v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true
- else
+ local target=finite(rawTarget) and rawTarget or nil
+ if finite(minAlt) then target=math.max(target or minAlt,minAlt) end
+ if finite(maxAlt) then target=math.min(target or maxAlt,maxAlt) end
+ if finite(target) then
+  if constraint=="ABOVE" then target=math.max(target,minAlt or target)
+  elseif constraint=="BELOW" then target=math.min(target,maxAlt or target) end
   v.TargetAltitude=clamp(target,0,60000); v.ConstraintType=constraint; v.ConstraintAltitude=v.TargetAltitude
   local tolerance=(constraint=="AT") and 75 or 100
   if constraint=="ABOVE" then v.ConstraintSatisfied=altitude+tolerance>=v.TargetAltitude elseif constraint=="BELOW" then v.ConstraintSatisfied=altitude-tolerance<=v.TargetAltitude else v.ConstraintSatisfied=math.abs(altitude-v.TargetAltitude)<=tolerance end
   v.PathError=v.TargetAltitude-altitude
+ else
+  v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true
  end
  local distance=math.max(1,tonumber(nav.DistanceToWaypoint) or 1)
  local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60)
