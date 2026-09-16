@@ -1,0 +1,7 @@
+-- FlightSim weather scenario presets v0.1
+local WeatherScenario={}
+local PRESETS={CLEAR={WindDirection=0,WindSpeed=5,TemperatureC=15,PressureHpa=1013.25,VisibilityKm=50,Precipitation=0,Turbulence=0,Icing=0,Thunderstorm=false},RAIN={WindDirection=120,WindSpeed=18,TemperatureC=24,PressureHpa=1008,VisibilityKm=8,Precipitation=0.65,Turbulence=0.25,Icing=0,Thunderstorm=false},IMC={WindDirection=250,WindSpeed=28,TemperatureC=8,PressureHpa=1002,VisibilityKm=3,Precipitation=0.35,Turbulence=0.35,Icing=0.15,Thunderstorm=false},STORM={WindDirection=290,WindSpeed=45,TemperatureC=20,PressureHpa=995,VisibilityKm=1.5,Precipitation=1,Turbulence=0.9,Icing=0.1,Thunderstorm=true}}
+function WeatherScenario.List() local out={}; for k in pairs(PRESETS) do out[#out+1]=k end; table.sort(out); return out end
+function WeatherScenario.Get(name) name=string.upper(tostring(name or "")); local p=PRESETS[name]; if not p then return nil,"unknown_weather_scenario" end; local c={}; for k,v in pairs(p) do c[k]=v end; return c end
+function WeatherScenario.Apply(environment,name) local p,err=WeatherScenario.Get(name); if not p then return false,err end; environment:SetWind(p.WindDirection,p.WindSpeed); environment:SetAtmosphere(p.TemperatureC,p.PressureHpa); environment:SetVisibility(p.VisibilityKm); environment:SetHazards(p.Precipitation,p.Turbulence,p.Icing,p.Thunderstorm); return true end
+return WeatherScenario
