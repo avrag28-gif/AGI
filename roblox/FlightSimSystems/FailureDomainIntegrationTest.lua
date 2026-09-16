@@ -1,5 +1,5 @@
--- FlightSim complete failure-domain integration contract tests v0.1
--- These tests verify ownership boundaries and physical responses for every current failure domain.
+-- FlightSim complete failure-domain integration contract tests v0.2
+-- These tests verify ownership boundaries, physical responses, and recovery of every current failure domain.
 local FailureSchema=require(script.Parent.FailureSchema)
 local Failures=require(script.Parent.Failures)
 local Engine=require(script.Parent.Engine)
@@ -28,6 +28,10 @@ local function run()
  s.data.Failures.Engines[1].Active=false; f:SetPressurization("Pack1",true); f:Step(1); s.data.Engines[1].Running=true; s.data.Electrical.Bus1=true; bleed:Step(1); check(not s.data.BleedAir.Pack1Available and s.data.BleedAir.Pack2Available,"pack failure response missing")
  f:SetPressurization("OutflowValve",true); f:Step(1); press:SetMode(false); press:SetOutflow(0.2); press:Step(1); check(math.abs(s.data.Pressurization.OutflowValve-0.35)<1e-6,"outflow valve failure must prevent command movement")
  f:SetAntiIce("Engine1",true); f:Step(1); ice:SetEngine(1,true); ice:Step(1); check(not s.data.AntiIce.Engine1 and s.data.AntiIce.Warning,"anti-ice failure response missing")
+ f:SetEngine(1,false); f:SetElectrical("Bus1",false); f:SetHydraulic("A",false); f:SetFlightControl("Aileron",false); f:SetEngineFire(2,false); f:SetElectrical("APU",false); f:SetPressurization("Pack1",false); f:SetPressurization("OutflowValve",false); f:SetAntiIce("Engine1",false); f:Step(1)
+ check(not s.data.FailureEffects.Engine1Failed and not s.data.FailureEffects.ElectricalBus1Failed and not s.data.FailureEffects.HydraulicAFailed,"cleared core failures left stale effects")
+ check(s.data.FailureEffects.AileronAuthority==1 and not s.data.FailureEffects.Engine2Fire and not s.data.FailureEffects.ElectricalAPUFailed,"cleared secondary failures left stale effects")
+ check(not s.data.FailureEffects.Pack1Failed and not s.data.FailureEffects.OutflowValveFailed and not s.data.FailureEffects.AntiIceEngine1Failed,"cleared pneumatic/anti-ice effects left stale state")
  return true
 end
 return {Run=run}
