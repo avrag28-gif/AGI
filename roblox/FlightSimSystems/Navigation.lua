@@ -1,4 +1,4 @@
--- FlightSim navigation / LNAV guidance v0.4
+-- FlightSim navigation / LNAV / VOR guidance v0.5
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -22,17 +22,21 @@ function Navigation:Step(dt)
   if nav.DistanceToWaypoint<=capture and i<#route then
    nav.ActiveWaypoint=i+1; wp=route[nav.ActiveWaypoint]; nav.DistanceToWaypoint=distance2D(pos,wp.Position); nav.BearingToWaypoint=bearing(pos,wp.Position)
    prev=route[nav.ActiveWaypoint-1]; nav.CrossTrackError=(prev and typeof(prev.Position)=="Vector3") and crossTrack(prev.Position,wp.Position,pos) or 0
-  elseif nav.DistanceToWaypoint<=capture and i==#route then
-   nav.RouteComplete=true
-  end
+  elseif nav.DistanceToWaypoint<=capture and i==#route then nav.RouteComplete=true end
   local desired=nav.BearingToWaypoint
   if nav.Mode=="LNAV" then
    local pathCourse=(prev and typeof(prev.Position)=="Vector3") and segmentCourse(prev.Position,wp.Position) or desired
    local xte=tonumber(nav.CrossTrackError) or 0
    local intercept=clamp(-xte*0.02,-30,30)
-   -- Fade intercept authority close to the waypoint to avoid aggressive last-second turns.
    if nav.DistanceToWaypoint<capture then intercept=intercept*(nav.DistanceToWaypoint/capture) end
    desired=wrap360(pathCourse+intercept)
+  elseif nav.Mode=="VOR" then
+   local vor=nav.VOR
+   if vor and vor.Available and nav.NAV1Receiver=="VOR" then
+    desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8)
+   else
+    desired=wrap360(x.Autopilot.TargetHeading or x.Heading)
+   end
   elseif nav.Mode=="HDG" or nav.Mode=="APP" then
    desired=wrap360(x.Autopilot.TargetHeading or x.Heading)
   end
