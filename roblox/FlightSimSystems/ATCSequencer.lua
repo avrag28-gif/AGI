@@ -1,8 +1,8 @@
--- FlightSim ATC takeoff / landing sequencing foundation v0.1
+-- FlightSim ATC takeoff / landing sequencing foundation v0.2
 -- Deterministic queueing and runway-clearance gating for the game simulation.
 local ATCSequencer={}; ATCSequencer.__index=ATCSequencer
 local OPS={TAKEOFF=true,LANDING=true,CROSSING=true}
-local function norm(v) return string.upper(tostring(v or "")):gsub("%s+"," "):gsub("^%s+",""):gsub("%s+$","") end
+local function norm(v) return string.upper(tostring(v or "")):gsub("%s+"," "):gsub("^%s+"," "):gsub("%s+$","") end
 local function key(v) local s=norm(v); return s~="" and #s<=32 and s or nil end
 function ATCSequencer.new(traffic) return setmetatable({traffic=traffic,queues={},sequence=0},ATCSequencer) end
 function ATCSequencer:_queue(runwayId)
@@ -13,6 +13,10 @@ function ATCSequencer:Enqueue(runwayId,aircraftId,callsign,operation)
  local q,err=self:_queue(runwayId); if not q then return false,err end
  local aid=key(aircraftId); local op=string.upper(tostring(operation or "")); if not aid then return false,"invalid_aircraft_id" end; if not OPS[op] then return false,"invalid_operation" end
  for _,entry in ipairs(q) do if entry.AircraftId==aid then return false,"aircraft_already_queued" end end
+ if self.traffic and self.traffic.GetRunway then
+  local runway=self.traffic:GetRunway(key(runwayId))
+  if runway and runway.AircraftId==aid and runway.State~="VACANT" then return false,"aircraft_already_active" end
+ end
  self.sequence+=1; local entry={AircraftId=aid,Callsign=key(callsign) or aid,Operation=op,Sequence=self.sequence}; q[#q+1]=entry; return true,entry
 end
 function ATCSequencer:Peek(runwayId)
