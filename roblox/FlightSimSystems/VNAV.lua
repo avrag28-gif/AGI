@@ -1,19 +1,20 @@
--- FlightSim VNAV vertical + speed guidance v1.0
+-- FlightSim VNAV vertical + speed guidance v1.1
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
+local FT_PER_M=3.28084
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
 local function constraintTarget(wp,cruise,targetFallback)
  local raw=wp and tonumber(wp.Altitude) or nil
  if not finite(raw) then raw=tonumber(cruise) end
  if not finite(raw) then raw=tonumber(targetFallback) end
- if not finite(raw) then return nil,"AT",nil,nil end
+ if not finite(raw) then return nil,"AT" end
  local c=wp and string.upper(tostring(wp.AltitudeConstraint or "AT")) or "AT"
  local minAlt=wp and tonumber(wp.MinAltitude) or nil; local maxAlt=wp and tonumber(wp.MaxAltitude) or nil
  if finite(minAlt) then raw=math.max(raw,minAlt) end
  if finite(maxAlt) then raw=math.min(raw,maxAlt) end
  if c=="ABOVE" then raw=math.max(raw,minAlt or raw) elseif c=="BELOW" then raw=math.min(raw,maxAlt or raw) end
- return clamp(raw,0,60000),c,minAlt,maxAlt
+ return clamp(raw,0,60000),c
 end
 function VNAV.new(state) return setmetatable({state=state,lastWaypoint=nil},VNAV) end
 function VNAV:Step(dt)
@@ -24,7 +25,7 @@ function VNAV:Step(dt)
  v.Mode="VNAV"
  local index=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); local wp=route[index]; local waypointChanged=self.lastWaypoint~=index; self.lastWaypoint=index
  local altitude=finite(x.Altitude) and x.Altitude or 0
- local target,constraint,minAlt,maxAlt=constraintTarget(wp,fmc.CruiseAltitude,ap.TargetAltitude)
+ local target,constraint=constraintTarget(wp,fmc.CruiseAltitude,ap.TargetAltitude)
  v.ConstraintType=target and constraint or nil; v.ConstraintAltitude=target; v.TargetAltitude=target
  if target then
   local tolerance=(constraint=="AT") and 75 or 100
@@ -33,13 +34,13 @@ function VNAV:Step(dt)
  else
   v.ConstraintSatisfied=true; v.PathError=0
  end
- local distance=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
+ local distance=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distance*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
  local tolerance=(constraint=="AT") and 75 or 100
  local descentDistance=0
- if target and altitude>target then descentDistance=math.max(0,(altitude-target)/math.tan(math.rad(3))) end
+ if target and altitude>target then descentDistance=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M) end
  if target then
   -- TOD is the horizontal distance remaining before the descent must begin.
-  -- Zero means the aircraft has reached the point where descent is required.
+  -- Altitude is in feet, so horizontal geometry is converted to feet before angle calculations.
   v.TopOfDescentDistance=(altitude>target) and math.max(0,distance-descentDistance) or nil
   if v.PathError>tolerance then v.Phase="CLIMB"
   elseif v.PathError<-tolerance then v.Phase=(distance<=descentDistance and "DESCENT" or "CRUISE")
@@ -49,7 +50,7 @@ function VNAV:Step(dt)
  end
  local pathAngle=0
  if target then
-  if v.Phase=="DESCENT" then pathAngle=-math.rad(3) elseif v.Phase=="CLIMB" then pathAngle=math.atan2(v.PathError,distance) else pathAngle=math.atan2(v.PathError,math.max(distance,926)) end
+  if v.Phase=="DESCENT" then pathAngle=-math.rad(3) elseif v.Phase=="CLIMB" then pathAngle=math.atan2(v.PathError,distanceFt) else pathAngle=math.atan2(v.PathError,math.max(distanceFt,3040)) end
   pathAngle=clamp(pathAngle,-math.rad(6),math.rad(6))
  end
  local desiredVS=math.tan(pathAngle)*fps*60
