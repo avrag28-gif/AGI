@@ -1,4 +1,4 @@
--- FlightSim navigation / LNAV / VOR / ILS guidance v0.8
+-- FlightSim navigation / LNAV / VOR / ILS guidance v0.9
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -30,7 +30,9 @@ function Navigation:Step(dt)
   elseif nav.Mode=="APP" then
    local ils=nav.NAV1Signal
    if nav.NAV1Receiver=="ILS" and ils and ils.Available and ils.LocalizerValid then
-    local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28; desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or x.Heading)-intercept)
+    -- Positive localizer means left of the runway centerline for the 0-degree/+Z convention.
+    -- Positive heading correction turns right toward the centerline.
+    local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28; desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or x.Heading)+intercept)
     if ils.GlideSlopeValid and finite(ils.DesiredAltitude) then nav.CommandAltitude=ils.DesiredAltitude end
    else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
   elseif nav.Mode=="HDG" then desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
