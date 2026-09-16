@@ -1,4 +1,4 @@
--- FlightSim navigation / LNAV / VOR guidance v0.6
+-- FlightSim navigation / LNAV / VOR / ILS guidance v0.7
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -26,15 +26,22 @@ function Navigation:Step(dt)
   if nav.Mode=="LNAV" then
    local pathCourse=(prev and typeof(prev.Position)=="Vector3") and segmentCourse(prev.Position,wp.Position) or desired; local xte=tonumber(nav.CrossTrackError) or 0; local intercept=clamp(-xte*0.02,-30,30); if nav.DistanceToWaypoint<capture then intercept=intercept*(nav.DistanceToWaypoint/capture) end; desired=wrap360(pathCourse+intercept)
   elseif nav.Mode=="VOR" then
-   local vor=nav.VOR; if vor and vor.Available and nav.NAV1Receiver=="VOR" then desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8) else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
-  elseif nav.Mode=="HDG" or nav.Mode=="APP" then desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
+   local vor=nav.NAV1Signal
+   if nav.NAV1Receiver=="VOR" and vor and vor.Available then desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8) else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
+  elseif nav.Mode=="APP" then
+   local ils=nav.NAV1Signal
+   if nav.NAV1Receiver=="ILS" and ils and ils.Available and ils.LocalizerValid then
+    local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28
+    desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or x.Heading)-intercept)
+    if ils.GlideSlopeValid and finite(ils.DesiredAltitude) then nav.CommandAltitude=ils.DesiredAltitude end
+   else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
+  elseif nav.Mode=="HDG" then desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
   nav.CommandHeading=desired
  else
   nav.CommandHeading=wrap360(x.Autopilot.TargetHeading or x.Heading); nav.RouteComplete=#route>0; nav.DistanceToWaypoint=0; nav.BearingToWaypoint=nav.CommandHeading; nav.CrossTrackError=0
  end
  nav.HeadingError=headingError(nav.CommandHeading,x.Heading)
- -- Altitude is only a computed navigation output when an active vertical mode owns it.
- if nav.Mode=="HDG" or nav.Mode=="LNAV" or nav.Mode=="VOR" or nav.Mode=="APP" then nav.CommandAltitude=nil end
+ if nav.Mode=="HDG" or nav.Mode=="LNAV" or nav.Mode=="VOR" then nav.CommandAltitude=nil end
  return nav
 end
 function Navigation:SetRoute(route) local x=self.state:Get(); x.Navigation.Route=route or {}; x.Navigation.ActiveWaypoint=1; x.Navigation.RouteComplete=false end
