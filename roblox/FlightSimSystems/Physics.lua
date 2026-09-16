@@ -1,7 +1,8 @@
--- FlightSim aerodynamic / ground dynamics foundation v2.0
+-- FlightSim aerodynamic / ground dynamics foundation v2.1
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 local Config=require(script.Parent.Config)
 local Physics={}; Physics.__index=Physics
+local FT_TO_M=0.3048
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function wrap(v) return (v%360+360)%360 end
 local function approach(v,t,r,dt) local d=t-v; local s=r*dt; if math.abs(d)<=s then return t end return v+(d>0 and s or -s) end
@@ -23,7 +24,10 @@ function Physics:Step(dt)
  if ground then local auth=clamp((speedKts-55)/40,0.1,1); pr=approach(pr,pCtrl*auth+0.05*turbP,7,dt); rr=approach(rr,rCtrl*clamp(speedKts/45,0,1)+0.05*turbR,8,dt); yr=finite((x.GroundSteering or {}).YawRate,0); x.Sideslip=approach(finite(x.Sideslip,0),clamp(crosswind*0.03,-3,3),4,dt)
  else local turn=0; if speedMS>15 then turn=math.deg(9.80665*math.tan(math.rad(bank))/speedMS) end; turn=clamp(turn,-12,12); local beta=finite(x.Sideslip,finite(x.Beta,0)); local windBeta=clamp(crosswind/math.max(effectiveAirspeed,60)*57.2958,-5,5); local desired=clamp(rud*4.5+turn*.1-rCtrl*.035+windBeta*.12,-10,10); beta=clamp(beta+((desired-beta)*2.8-beta*.55-yr*.045)*dt,-12,12); yr=approach(yr,turn*.32+yCtrl-beta*.95-yr*.72-ail*1.4*qf*hyd+yawMoment+clamp(crosswind*.015,-.9,.9),5.5,dt); rr=approach(rr,rCtrl-rr*.58*qf+.25*turbR,7,dt); pr=approach(pr,pCtrl-(aoa-(2.5+clamp(flap*1.5,0,1.5)))*.30-clamp(((speedKts-(125+flap*20))/35)*.65,-3.5,3.5)-pr*.35*qf+.25*turbP,5.5,dt); x.Sideslip=beta; x.Beta=beta; x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1) end
  x.PitchRate=pr; x.RollRate=rr; x.YawRate=yr; x.Yaw=yr; x.Pitch=clamp(finite(x.Pitch,0)+pr*dt,-35,35); x.Roll=clamp(bank+rr*dt,-75,75); x.Heading=wrap(finite(x.Heading,0)+(ground and finite((x.GroundSteering or {}).YawRate,0) or yr)*dt)
- local fpa=math.rad(x.Pitch-aoa); local targetVS=math.sin(fpa)*aeroSpeedMS; local vs=finite(x.VerticalSpeed,0); local vAccel=(lift-weight*math.cos(math.rad(x.Roll)))/math.max(mass,1); vs+=vAccel*dt; if not ground then vs=approach(vs,targetVS,18,dt) end; vs*=clamp(1-.08*math.abs(x.Roll)/45,.6,1); local liftoff=ground and speedKts>=90 and lift/math.max(weight,1)>=.92 and vs>.5; if liftoff then x.GroundContact=false else if ground then vs=0 end end; x.VerticalSpeed=clamp(vs,-80,80); if not x.GroundContact then x.Altitude=clamp(finite(x.Altitude,0)+x.VerticalSpeed*dt,0,Config.MaxAltitude) else x.Altitude=0 end
- local forward=CFrame.Angles(math.rad(-x.Pitch),math.rad(x.Heading),0).LookVector; local wu=finite(weather.WindUKts,0); local wv=finite(weather.WindVKts,0); x.Velocity=forward*(x.Airspeed*.514444)+Vector3.new(wu*.514444,0,wv*.514444); x.Position+=x.Velocity*dt; if x.GroundContact then x.Position=Vector3.new(x.Position.X,0,x.Position.Z) end; x.Phase=x.GroundContact and (x.Airspeed<1 and "Ground" or "TakeoffOrLanding") or "Airborne"
+ local fpa=math.rad(x.Pitch-aoa); local targetVS=math.sin(fpa)*aeroSpeedMS; local vs=finite(x.VerticalSpeed,0); local vAccel=(lift-weight*math.cos(math.rad(x.Roll)))/math.max(mass,1); vs+=vAccel*dt; if not ground then vs=approach(vs,targetVS,18,dt) end; vs*=clamp(1-.08*math.abs(x.Roll)/45,.6,1); local liftoff=ground and speedKts>=90 and lift/math.max(weight,1)>=.92 and vs>.5; if liftoff then x.GroundContact=false elseif ground then vs=0 end
+ x.VerticalSpeed=clamp(vs,-80,80)
+ local yMeters=math.max(0,finite(x.Altitude,0))*FT_TO_M
+ if x.GroundContact then x.Altitude=0 else x.Altitude=clamp(finite(x.Altitude,0)+x.VerticalSpeed*dt/FT_TO_M,0,Config.MaxAltitude) end
+ local forward=CFrame.Angles(math.rad(-x.Pitch),math.rad(x.Heading),0).LookVector; local wu=finite(weather.WindUKts,0); local wv=finite(weather.WindVKts,0); local verticalMS=x.VerticalSpeed; x.Velocity=forward*(x.Airspeed*.514444)+Vector3.new(wu*.514444,verticalMS,wv*.514444); x.Position+=x.Velocity*dt; if x.GroundContact then x.Position=Vector3.new(x.Position.X,0,x.Position.Z) else x.Position=Vector3.new(x.Position.X,yMeters,x.Position.Z) end; x.Phase=x.GroundContact and (x.Airspeed<1 and "Ground" or "TakeoffOrLanding") or "Airborne"
 end
 return Physics
