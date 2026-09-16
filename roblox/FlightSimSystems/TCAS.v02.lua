@@ -1,11 +1,11 @@
--- FlightSim TCAS-style advisory controller v0.2
+-- FlightSim TCAS-style advisory controller v0.3
 local TCAS={}; TCAS.__index=TCAS
 function TCAS.new(registry) return setmetatable({registry=registry,advisories={}},TCAS) end
 local function add(x,id,ownId,ownPos,ownAlt)
  if id==ownId then return end
  local s=x:Get(); local p=s.Position; if typeof(p)~="Vector3" then return end
- local d=(p-ownPos).Magnitude; local v=math.abs((tonumber(s.Altitude) or 0)-ownAlt)
- if d<=5000 and v<=1000 then return {Intruder=id,RangeM=d,VerticalSeparationFt=v,Level=d<=1500 and "RA" or "TA"} end
+ local alt=tonumber(s.Altitude) or 0; local d=(p-ownPos).Magnitude; local v=math.abs(alt-ownAlt)
+ if d<=5000 and v<=1000 then return {Intruder=id,RangeM=d,VerticalSeparationFt=v,Level=d<=1500 and "RA" or "TA",Position=p,Altitude=alt} end
 end
 function TCAS:Step(ownId)
  self.advisories={}; local own=self.registry:Get(ownId); if not own then return self.advisories end
