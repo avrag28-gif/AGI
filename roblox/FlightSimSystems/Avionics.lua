@@ -1,4 +1,4 @@
--- FlightSim avionics foundation v0.1
+-- FlightSim avionics foundation v0.2
 local Avionics = {}
 Avionics.__index = Avionics
 
@@ -16,7 +16,7 @@ function Avionics:Step(dt)
 	a.Radios = powered
 	a.Transponder = powered
 	a.TCAS = powered
-	a.WeatherRadar = powered and (x.WeatherRadarEnabled ~= false) or false
+	a.WeatherRadar = powered and a.WeatherRadarEnabled ~= false or false
 end
 
 return Avionics
