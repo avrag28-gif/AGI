@@ -84,6 +84,25 @@ Telemetry Snapshot
 Client / Cockpit / Instruments
 ```
 
+## Failure ownership and propagation
+
+`Failures.lua` is the single authoritative declaration of modeled faults. `FailureSchema.lua` guarantees the complete failure-state shape and the derived `FailureEffects` shape. `Failures:Step()` only normalizes failure state and rebuilds derived effects; it never overwrites engine thrust/running state, electrical bus state, hydraulic pressure, or other subsystem-owned physical values.
+
+The physical response belongs to the subsystem that owns that state:
+
+- `Engine.lua` consumes engine failure state and owns engine shutdown, spool, thrust, fuel flow and generator availability.
+- `Electrical.lua` consumes electrical failure state and owns bus/source selection, battery behavior and load shedding.
+- `APU.lua` consumes APU-generator failure state and owns APU start/spool/generator behavior.
+- `Hydraulic.lua` consumes hydraulic failure state and owns pressure generation/decay.
+- `FlightControls.lua` consumes derived control authority and owns surface response/hydraulic demand.
+- `BleedAir.lua`, `Pressurization.lua` and `AntiIce.lua` consume their respective failure state and own pneumatic/cabin/anti-ice physical outputs.
+- `FireProtection.lua` owns the immediate fire-protection response; fire fault state is declared through the failure manager.
+- `Annunciation.lua` consumes resulting system state and produces warnings; it does not repair or directly control failed systems.
+
+This creates a one-way chain: **failure declaration → derived failure effects → subsystem physical response → instrumentation/annunciation**. No generic failure module is allowed to become a second owner of subsystem physics.
+
+The runtime executes `Failures:Step()` before the physical subsystem steps so a newly declared failure is visible to all consumers in the same fixed simulation tick.
+
 ## Guidance ownership
 
 MCP stores pilot-selected targets and modes. Navigation, VNAV and raw radio/ILS producers calculate guidance inputs. Autopilot consumes those inputs and produces flight-control commands. Autothrottle consumes selected/VNAV speed targets and produces engine throttle commands. Presentation modules do not overwrite computed guidance state.
@@ -96,11 +115,27 @@ ATC is authoritative per aircraft. It owns callsign, controller phase, clearance
 
 ## Engine-out integration
 
-Engine failures are server-authoritative. A failed engine loses running state/thrust, while the physics layer integrates left/right thrust asymmetry into a yaw moment and exposes `EngineIntegration` telemetry. Failure logic stays in the failure/engine systems; cockpit code never directly injects engine failure effects.
+Engine failures are server-authoritative. A failed engine loses running state/thrust through `Engine.lua`, while the physics layer integrates left/right thrust asymmetry into a yaw moment and exposes `EngineIntegration` telemetry. Failure logic stays in the failure/engine systems; cockpit code never directly injects engine failure effects.
 
 ## Electrical source priority
 
 Electrical models source availability rather than treating Battery/APU/engine generators as equivalent booleans. Engine generator availability depends on a stable running engine; APU generator availability depends on a running/stable APU; external power is an independent ground source. Boeing-specific behavior is implemented progressively from public system knowledge.
+
+## Failure verification contract
+
+The failure layer has deterministic contract coverage for:
+
+- authoritative failure state/effect derivation,
+- engine failure → engine shutdown/thrust removal → bleed-source loss,
+- independent electrical bus isolation,
+- independent hydraulic-system failure,
+- flight-control authority loss,
+- pressurization pack failure,
+- anti-ice component failure and warning,
+- fire-protection shutdown response,
+- clearing failures without stale derived effects.
+
+These tests are source-level deterministic contracts; they do not claim a Roblox Studio runtime execution or certification-level aircraft behavior.
 
 ## Migration rule
 
@@ -108,4 +143,4 @@ Electrical models source availability rather than treating Battery/APU/engine ge
 
 ## Current phase
 
-The core aircraft simulation chain is now wired through MCP/VNAV, ILS/VOR receiver ownership, autopilot, autothrottle/TOGA, engine-out asymmetric-thrust integration, ATC clearance/readback foundation, and deterministic subsystem contract tests. The next layers are airport/aircraft content integration, richer ATC traffic/clearance logic, weather/environment, emergency procedures, cockpit hardware, multiplayer traffic coordination, and optimization.
+The core aircraft simulation chain is wired through MCP/VNAV, ILS/VOR receiver ownership, autopilot, autothrottle/TOGA, engine-out asymmetric-thrust integration, ATC clearance/readback foundation, weather/environment, pressurization/bleed-air/anti-ice, and deterministic failure/subsystem contract tests. The failure architecture is now separated into authoritative fault state and subsystem-owned physical response. The next layers are airport/aircraft content integration, richer ATC traffic/clearance logic, emergency procedures, cockpit hardware, multiplayer traffic coordination, and optimization.
