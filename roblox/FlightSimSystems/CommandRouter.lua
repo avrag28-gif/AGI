@@ -1,4 +1,4 @@
--- FlightSim server command router v1.5
+-- FlightSim server command router v1.6
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
 local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true}
@@ -15,8 +15,10 @@ function CommandRouter:Handle(player,id,command,a,b)
  if command=="Battery" then x.Electrical.Battery=a==true
  elseif command=="ExternalPower" then x.Electrical.ExternalPower=a==true
  elseif command=="APU" then x.Electrical.APU=a==true
- elseif command=="FuelPump" then local p=string.upper(tostring(a)); local on=b==true; if p=="LEFT" then x.FuelSystem.LeftPump=on elseif p=="CENTER" then x.FuelSystem.CenterPump=on elseif p=="RIGHT" then x.FuelSystem.RightPump=on else return false,"invalid_fuel_pump" end
- elseif command=="FuelCrossfeed" then x.FuelSystem.Crossfeed=a==true
+ elseif command=="FuelPump" then
+  local p=string.upper(tostring(a)); local on=b==true
+  if p=="LEFT" then x.FuelSystem.LeftPumpSwitch=on elseif p=="CENTER" then x.FuelSystem.CenterPumpSwitch=on elseif p=="RIGHT" then x.FuelSystem.RightPumpSwitch=on else return false,"invalid_fuel_pump" end
+ elseif command=="FuelCrossfeed" then x.FuelSystem.CrossfeedSwitch=a==true
  elseif command=="EngineFuelFeed" then local i=engineIndex(a); local source=string.upper(tostring(b)); if not i then return false,"invalid_engine" end; if source~="AUTO" and source~="LEFT" and source~="CENTER" and source~="RIGHT" then return false,"invalid_fuel_source" end; x.FuelSystem.EngineFeed[i]=source
  elseif command=="EngineStarter" or command=="EngineFuel" or command=="EngineIgnition" then local i=engineIndex(a); if not i then return false,"invalid_engine" end; local e=x.Engines[i]; if command=="EngineStarter" then e.Starter=b==true elseif command=="EngineFuel" then e.FuelOn=b==true else e.Ignition=b==true end
  elseif command=="Throttle" then local i=engineIndex(a); local v=tonumber(b); if not i or not finite(v) then return false,"invalid_throttle" end; x.Throttle[i]=math.clamp(v,0,1)
