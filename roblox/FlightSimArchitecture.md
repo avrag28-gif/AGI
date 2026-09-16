@@ -7,57 +7,55 @@ This document is the engineering contract for the Roblox Flight Simulator. The p
 ## Design rules
 
 1. Server authority: aircraft/system state is authoritative on the server. Clients request actions and render the resulting state.
-2. One aircraft, one state: state must belong to an aircraft instance. Never keep the live aircraft state as one global singleton once aircraft instances exist.
-3. Systems are modular: electrical, fuel, engines, hydraulics, flight controls, landing gear/brakes, avionics, navigation, MCP/VNAV, autopilot/autothrottle, environmental systems, failures and aircraft physics are separate systems.
-4. Data first: cockpit controls do not directly change physics. They issue commands; a system validates the command, changes state, and produces effects/telemetry.
-5. Units are explicit: internal values must document their units. Avoid mixing Roblox studs, SI units, knots, feet and pounds without conversion at a boundary.
-6. Fixed simulation step: simulation systems should run from a controlled tick rather than depending on render frequency.
-7. Presentation is downstream: cockpit animation, gauges, sounds and UI read state; they do not own authoritative simulation state.
-8. Validation belongs on the server: range checks, ownership/seat checks, system interlocks and command rate limits are server-side.
-9. Failure-ready: each system should expose normal operation and failure/degraded states so failures can later be injected without rewriting the whole aircraft.
-10. Testable: important system transitions should be deterministic enough to test without a 3D cockpit.
+2. One aircraft, one state: state belongs to an aircraft instance.
+3. Systems are modular: electrical, fuel, engines, hydraulics, flight controls, landing gear/brakes, avionics, navigation, MCP/VNAV, autopilot/autothrottle, ATC, environmental systems, failures and aircraft physics are separate systems.
+4. Data first: cockpit controls issue commands; systems validate commands and change authoritative state.
+5. Units are explicit: internal values document their units and conversions happen at boundaries.
+6. Fixed simulation step: simulation systems run from a controlled tick rather than render frequency.
+7. Presentation is downstream: cockpit animation, gauges, sounds and UI read state only.
+8. Server validation: range, ownership/seat, interlocks and rate limits are server-side.
+9. Failure-ready: systems expose normal and degraded states.
+10. Testable: important transitions are deterministic enough to test without a 3D cockpit.
 
 ## Target runtime layout
 
 ```text
-ReplicatedStorage
-└── FlightSim
-    ├── Shared
-    │   ├── Config
-    │   ├── Units
-    │   ├── Types
-    │   └── StateSchema
-    └── Remotes
-        ├── AircraftCommand
-        └── Telemetry
+ReplicatedStorage/FlightSim
+├── Shared
+│   ├── Config
+│   ├── Units
+│   ├── Types
+│   └── StateSchema
+└── Remotes
+    ├── AircraftCommand
+    └── Telemetry
 
-ServerScriptService
-└── FlightSim
-    ├── Main.server.lua
-    ├── Simulation.lua
+ServerScriptService/FlightSim
+├── FlightSimRuntime.server.lua
+└── FlightSimSystems
     ├── AircraftRegistry.lua
     ├── CommandRouter.lua
-    └── Systems
-        ├── Electrical.lua
-        ├── Fuel.lua
-        ├── Engine.lua
-        ├── Hydraulic.lua
-        ├── FlightControls.lua
-        ├── LandingGear.lua
-        ├── Brakes.lua
-        ├── Avionics.lua
-        ├── NAVReceiver.lua
-        ├── Navigation.lua
-        ├── VNAV.lua
-        ├── MCP.v02.lua
-        ├── Autopilot.lua
-        ├── AutoThrottle.lua
-        ├── Environment.lua
-        └── Failures.lua
-
-StarterPlayer
-└── StarterPlayerScripts
-    └── FlightSimClient.client.lua
+    ├── Electrical.lua
+    ├── Fuel.lua
+    ├── Engine.lua
+    ├── Hydraulic.lua
+    ├── FlightControls.lua
+    ├── LandingGear.lua
+    ├── Brakes.lua
+    ├── Avionics.lua
+    ├── Radio.lua
+    ├── Transponder.lua
+    ├── NAVReceiver.lua
+    ├── Navigation.lua
+    ├── VNAV.lua
+    ├── MCP.v02.lua
+    ├── Autopilot.lua
+    ├── AutoThrottle.lua
+    ├── ATC.lua
+    ├── Approach.lua
+    ├── VOR.lua
+    ├── Failures.lua
+    └── Physics.lua
 ```
 
 ## System dependency direction
@@ -69,51 +67,45 @@ Cockpit / Client
 CommandRouter
       |
       v
- Aircraft State <---- Systems
+Aircraft State <---- Systems
       |                 |
-      |                 +-- Electrical
-      |                 +-- Fuel
-      |                 +-- Engines
-      |                 +-- Hydraulics
-      |                 +-- Flight Controls
-      |                 +-- Gear/Brakes
-      |                 +-- Avionics
-      |                 +-- NAV Receivers
+      |                 +-- Electrical / Fuel / Engines / Hydraulics
+      |                 +-- Flight Controls / Gear / Brakes
+      |                 +-- Avionics / Radios / Transponder
       |                 +-- Navigation / FMC / VOR / ILS
-      |                 +-- MCP / VNAV
-      |                 +-- Autopilot / Autothrottle
-      |                 +-- Environment
-      |                 +-- Failures
+      |                 +-- MCP / VNAV / Autopilot / Autothrottle
+      |                 +-- ATC
+      |                 +-- Environment / Failures
       |                 +-- Aerodynamic / ground physics
       v
- Telemetry Snapshot
+Telemetry Snapshot
       |
       v
- Client / Cockpit / Instruments
+Client / Cockpit / Instruments
 ```
 
 ## Guidance ownership
 
-MCP stores pilot-selected targets and modes. Navigation, VNAV and raw radio/ILS producers calculate guidance inputs. Autopilot consumes those inputs and produces flight-control commands. Autothrottle consumes selected/VNAV speed targets and produces engine throttle commands. No presentation module should overwrite computed guidance state.
+MCP stores pilot-selected targets and modes. Navigation, VNAV and raw radio/ILS producers calculate guidance inputs. Autopilot consumes those inputs and produces flight-control commands. Autothrottle consumes selected/VNAV speed targets and produces engine throttle commands. Presentation modules do not overwrite computed guidance state.
 
-The go-around chain is explicitly command-driven: cockpit `GoAround` → server command validation → autopilot go-around guidance + autothrottle TOGA state → engine thrust/flight-control response → telemetry. The implementation is a game-simulation approximation, not certified Boeing logic.
+The go-around chain is command-driven: cockpit `GoAround` → server validation → autopilot go-around guidance + autothrottle TOGA → engine/flight-control response → telemetry. This is a game-simulation approximation, not certified Boeing logic.
+
+## ATC ownership
+
+ATC is authoritative per aircraft. It owns callsign, controller phase, clearance, pending readback, assigned squawk/frequency/runway and readback result. A clearance request creates a structured clearance; the pilot must return a structured readback for validation. ATC synchronizes the assigned squawk into the transponder state. Later phases can add taxi routing, departure instructions, traffic separation, approach sequencing, emergency handling and multi-aircraft controller state without coupling those rules to cockpit UI.
 
 ## Engine-out integration
 
-Engine failures are server-authoritative. A failed engine loses running state/thrust, while the physics layer integrates the resulting left/right thrust asymmetry into a yaw moment and exposes `EngineIntegration` telemetry. This keeps engine failure effects downstream of the engine system rather than embedding failure logic inside the cockpit.
+Engine failures are server-authoritative. A failed engine loses running state/thrust, while the physics layer integrates left/right thrust asymmetry into a yaw moment and exposes `EngineIntegration` telemetry. Failure logic stays in the failure/engine systems; cockpit code never directly injects engine failure effects.
 
 ## Electrical source priority
 
-The electrical system must model source availability rather than treating Battery/APU/engine generators as equivalent booleans.
-
-A source is available only when its prerequisites are satisfied. Engine generator availability depends on a stable running engine. APU generator availability depends on a running/stable APU. External power is an independent ground source.
-
-The exact 737 behavior will be implemented progressively from public aircraft-system knowledge; this project is not official Boeing software and is not intended for real-world flight use.
+Electrical models source availability rather than treating Battery/APU/engine generators as equivalent booleans. Engine generator availability depends on a stable running engine; APU generator availability depends on a running/stable APU; external power is an independent ground source. Boeing-specific behavior is implemented progressively from public system knowledge.
 
 ## Migration rule
 
-The current `FlightSimBootstrap.server.lua` is a development installer for the prototype. It must not be treated as the final production architecture. New systems should be written as real source files first, then wired into the runtime. The bootstrap can be updated as an installer during the migration, but it must not become a dumping ground for the entire simulator.
+`FlightSimBootstrap.server.lua` is a development installer, not the final production runtime. New systems are written as source modules and then wired into the runtime. The legacy MCP implementation is retired in favor of `MCP.v02.lua`.
 
 ## Current phase
 
-Core flight-management foundation: MCP/VNAV guidance, ILS/VOR receiver ownership, autopilot, autothrottle/TOGA, engine-out asymmetric-thrust integration, and deterministic subsystem contract tests are wired into the modular runtime. Remaining work continues upward into full cockpit hardware, aircraft/airport content, ATC, weather, failures and multiplayer/optimization passes.
+The core aircraft simulation chain is now wired through MCP/VNAV, ILS/VOR receiver ownership, autopilot, autothrottle/TOGA, engine-out asymmetric-thrust integration, ATC clearance/readback foundation, and deterministic subsystem contract tests. The next layers are airport/aircraft content integration, richer ATC traffic/clearance logic, weather/environment, emergency procedures, cockpit hardware, multiplayer traffic coordination, and optimization.
