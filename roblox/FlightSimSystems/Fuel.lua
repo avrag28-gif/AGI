@@ -1,5 +1,6 @@
--- FlightSim fuel system v0.6
--- Server-authoritative tank pumps, engine-specific feed paths, crossfeed and fuel telemetry.
+-- FlightSim fuel system v0.7
+-- Server-authoritative tank pumps, engine-specific feed paths, crossfeed and fuel-power interlock.
+-- Game simulation only; quantities and flow rates are tunable simulation values.
 local Fuel={}; Fuel.__index=Fuel
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function ensure(x)
@@ -60,6 +61,15 @@ end
 function Fuel:Step(dt)
  local x=self.state:Get(); local tanks,s=ensure(x)
  tanks.Left=math.max(0,tonumber(tanks.Left) or 0); tanks.Center=math.max(0,tonumber(tanks.Center) or 0); tanks.Right=math.max(0,tonumber(tanks.Right) or 0)
+
+ -- Fuel pumps require an available electrical source in the simulation.
+ -- This prevents a failed/uncharged electrical system from magically feeding engines.
+ local electrical=x.Electrical or {}
+ local pumpPower=(electrical.Battery==true or electrical.ExternalPower==true or electrical.APU==true or electrical.Bus1==true or electrical.Bus2==true)
+ if not pumpPower then
+  s.LeftPump=false; s.CenterPump=false; s.RightPump=false
+ end
+
  s.EngineFuelAvailable[1]=self:_pathAvailable(s,tanks,1); s.EngineFuelAvailable[2]=self:_pathAvailable(s,tanks,2)
  local d1=self:_engineDemand(x,1,x.Engines[1] and x.Engines[1].FuelFlow,dt); local d2=self:_engineDemand(x,2,x.Engines[2] and x.Engines[2].FuelFlow,dt)
  local used1,src1=self:_feedEngine(tanks,s,1,d1); local used2,src2=self:_feedEngine(tanks,s,2,d2)
