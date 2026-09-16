@@ -31,7 +31,12 @@ Examples:
 | MCP vertical-speed selector | MCPVerticalSpeed | feet/min | — |
 | MCP mode selector | MCPMode | HDG/LNAV/VNAV/VOR/APP/ALT_HOLD/LCHG/VS/OFF | — |
 | Autothrottle switch | AutoThrottle | true/false | — |
+| TOGA / go-around switch | GoAround | true/false | — |
+
+The keyboard client maps `X` to `GoAround=true` for the simulation prototype. A physical TOGA control should use the same server command.
 
 MCP targets are pilot selections stored in authoritative aircraft state. Navigation/autopilot systems consume those selections; MCP does not directly overwrite computed navigation guidance outputs.
+
+Autothrottle telemetry exposes `Enabled`, `Active`, `Mode`, `Protection`, `TargetSpeed`, `SpeedError`, and per-engine throttle commands. During go-around the simulation uses `Mode=TOGA` and commands maximum available engine throttle; this is a game-simulation approximation, not certified Boeing logic.
 
 This is an interaction contract, not a finished 3D cockpit. The aircraft-model pass should name physical controls consistently and add the corresponding attributes/detectors.
