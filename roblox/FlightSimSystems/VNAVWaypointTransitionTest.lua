@@ -1,4 +1,4 @@
--- FlightSim VNAV waypoint-transition tests v0.2
+-- FlightSim VNAV waypoint-transition tests v0.3
 -- Source-level tests; these are not Roblox runtime execution tests.
 local VNAV=require(script.Parent.VNAV)
 local function check(ok,msg) assert(ok,msg) end
@@ -21,17 +21,18 @@ local function run()
  check(s.data.VNAV.TargetSpeed==180,"VNAV must switch immediately to the new waypoint speed")
  check(s.data.VNAV.ConstraintAltitude==12000,"old altitude constraint must not remain active")
  check(s.data.VNAV.SpeedConstraintType=="AT","new speed constraint must replace old constraint")
- check(s.data.VNAV.Phase=="DESCENT","new lower constraint must immediately select descent when descent distance is required")
+ check(s.data.VNAV.Phase=="CRUISE","before TOD, VNAV should remain in cruise")
  check(s.data.VNAV.TopOfDescentDistance>0,"TOD distance must be positive before descent point")
  s.data.Navigation.DistanceToWaypoint=1000
  v:Step(1/60)
- check(s.data.VNAV.Phase=="DESCENT","descent phase must remain active after passing TOD")
+ check(s.data.VNAV.Phase=="DESCENT","VNAV must switch to descent after TOD")
  check(s.data.VNAV.TopOfDescentDistance==0,"TOD distance must clamp to zero after descent point")
  s.data.Navigation.ActiveWaypoint=3
  s.data.Autopilot.TargetSpeed=nil
  v:Step(1/60)
  check(s.data.VNAV.TargetAltitude==30000,"missing waypoint altitude must fall back to FMC cruise altitude")
  check(s.data.VNAV.TargetSpeed==nil,"missing waypoint speed must clear stale speed constraint")
+ check(s.data.VNAV.TopOfDescentDistance==nil,"missing waypoint must not retain stale TOD")
  return true
 end
 return {Run=run}
