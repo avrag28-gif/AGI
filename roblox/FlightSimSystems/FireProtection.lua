@@ -1,4 +1,4 @@
--- FlightSim fire protection / overheat detection foundation v0.1
+-- FlightSim fire protection / overheat detection foundation v0.2
 -- Game simulation only; thresholds are tunable and are not certified aircraft data.
 local FireProtection={}; FireProtection.__index=FireProtection
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -16,19 +16,18 @@ function FireProtection:Step(dt)
  for i=1,2 do
   local e=x.Engines[i]; local d=f.Engines[i]
   local heat=math.max(0,(e.EGT or 20)-350)/700
-  local failed=failures.Engines and failures.Engines[i]==true
   d.Detector=clamp(d.Detector+(heat>0.55 and 0.8 or -0.35)*dt,0,1)
   d.Overheat=(e.EGT or 20)>=700
-  d.Fire=d.Detector>=0.8 or failed
+  local forcedFire=failures.Engines and failures.Engines[i] and failures.Engines[i].Fire==true
+  d.Fire=d.Detector>=0.8 or forcedFire or (f.FireTest==true)
   d.Warning=d.Fire or d.Overheat
-  if d.Fire then e.FuelOn=false; e.Ignition=false; e.Starter=false end
+  if d.Fire and d.Armed then e.FuelOn=false; e.Ignition=false; e.Starter=false end
  end
- local apu=x.APU or {}
- local a=f.APU
+ local apu=x.APU or {}; local a=f.APU
  local apuHeat=math.max(0,(apu.EGT or 20)-250)/600
  a.Detector=clamp(a.Detector+(apuHeat>0.6 and 0.8 or -0.35)*dt,0,1)
  a.Overheat=(apu.EGT or 20)>=650
- a.Fire=a.Detector>=0.8 or failures.APU==true
+ a.Fire=a.Detector>=0.8 or (failures.APU and failures.APU.Fire==true) or f.FireTest
  a.Warning=a.Fire or a.Overheat
  x.FireProtection=f
  x.FireProtection.MasterWarning=f.Engines[1].Warning or f.Engines[2].Warning or f.APU.Warning or f.FireTest
