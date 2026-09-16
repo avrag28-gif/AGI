@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical guidance v0.3
+-- FlightSim VNAV vertical guidance v0.4
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -6,36 +6,39 @@ local function finite(v) return type(v)=="number" and v==v and v>-math.huge and 
 function VNAV.new(state) return setmetatable({state=state},VNAV) end
 function VNAV:Step(dt)
  local x=self.state:Get(); local nav=x.Navigation or {}; local route=nav.Route or {}
- x.VNAV=x.VNAV or {Mode="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0,DescentPathAngle=0,CommandVerticalSpeed=0}
+ x.VNAV=x.VNAV or {Mode="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0,DescentPathAngle=0,CommandVerticalSpeed=nil,ConstraintType=nil,ConstraintAltitude=nil,ConstraintSatisfied=true}
  local v=x.VNAV
- if nav.Mode~="VNAV" then v.Mode="OFF"; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=0; return true end
+ if nav.Mode~="VNAV" then v.Mode="OFF"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; return true end
  v.Mode="VNAV"
  local wp=route[nav.ActiveWaypoint]
- local target=wp and tonumber(wp.Altitude) or tonumber(x.Autopilot and x.Autopilot.TargetAltitude)
- if not finite(target) then v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=0; return true end
- v.TargetAltitude=clamp(target,0,60000)
  local altitude=finite(x.Altitude) and x.Altitude or 0
+ local rawTarget=wp and tonumber(wp.Altitude) or tonumber(x.Autopilot and x.Autopilot.TargetAltitude)
+ local constraint=wp and string.upper(tostring(wp.AltitudeConstraint or (wp.Altitude and "AT" or "AT"))) or "AT"
+ local minAlt=wp and tonumber(wp.MinAltitude) or nil
+ local maxAlt=wp and tonumber(wp.MaxAltitude) or nil
+ local target
+ if finite(minAlt) then target=minAlt end
+ if finite(maxAlt) then target=finite(target) and math.min(target,maxAlt) or maxAlt end
+ if finite(rawTarget) then
+  if constraint=="ABOVE" then target=math.max(target or rawTarget,rawTarget)
+  elseif constraint=="BELOW" then target=math.min(target or rawTarget,rawTarget)
+  else target=rawTarget end
+ end
+ if not finite(target) then v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; return true end
+ v.TargetAltitude=clamp(target,0,60000); v.ConstraintType=constraint; v.ConstraintAltitude=v.TargetAltitude
+ local tolerance=(constraint=="AT") and 75 or 100
+ if constraint=="ABOVE" then v.ConstraintSatisfied=altitude+ tolerance>=v.TargetAltitude else if constraint=="BELOW" then v.ConstraintSatisfied=altitude- tolerance<=v.TargetAltitude else v.ConstraintSatisfied=math.abs(altitude-v.TargetAltitude)<=tolerance end end
  v.PathError=v.TargetAltitude-altitude
  local distance=math.max(1,tonumber(nav.DistanceToWaypoint) or 1)
  local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60)
- -- Build a geometric path to the active waypoint rather than deriving VS only
- -- from altitude error. Distance and altitude use the simulation's world units.
- local pathAngle=math.atan2(v.PathError,distance)
- local maxAngle=math.rad(6)
- pathAngle=clamp(pathAngle,-maxAngle,maxAngle)
  local fps=speed*1.68781
+ local pathAngle=math.atan2(v.PathError,distance); local maxAngle=math.rad(6); pathAngle=clamp(pathAngle,-maxAngle,maxAngle)
  local desiredVS=math.tan(pathAngle)*fps*60
- -- Reduce command near capture so the aircraft settles instead of chasing the
- -- waypoint with a large last-second vertical correction.
- if distance<1000 then desiredVS=clamp(desiredVS,-800,800)
- elseif distance<5000 then desiredVS=clamp(desiredVS,-1800,1800)
- else desiredVS=clamp(desiredVS,-2500,2500) end
+ if distance<1000 then desiredVS=clamp(desiredVS,-800,800) elseif distance<5000 then desiredVS=clamp(desiredVS,-1800,1800) else desiredVS=clamp(desiredVS,-2500,2500) end
  if math.abs(v.PathError)<75 then desiredVS=clamp(v.PathError*0.08,-800,800) end
- v.VerticalSpeed=desiredVS
- v.CommandVerticalSpeed=desiredVS
- v.DescentPathAngle=math.deg(pathAngle)
- nav.CommandAltitude=v.TargetAltitude
- nav.CommandVerticalSpeed=desiredVS
+ if constraint=="ABOVE" and altitude<v.TargetAltitude then desiredVS=math.max(desiredVS,0) elseif constraint=="BELOW" and altitude>v.TargetAltitude then desiredVS=math.min(desiredVS,0) end
+ v.VerticalSpeed=desiredVS; v.CommandVerticalSpeed=desiredVS; v.DescentPathAngle=math.deg(pathAngle)
+ nav.CommandAltitude=v.TargetAltitude; nav.CommandVerticalSpeed=desiredVS
  return true
 end
 return VNAV
