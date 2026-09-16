@@ -8,7 +8,7 @@ This document is the engineering contract for the Roblox Flight Simulator. The p
 
 1. Server authority: aircraft/system state is authoritative on the server. Clients request actions and render the resulting state.
 2. One aircraft, one state: state must belong to an aircraft instance. Never keep the live aircraft state as one global singleton once aircraft instances exist.
-3. Systems are modular: electrical, fuel, engines, hydraulics, flight controls, landing gear/brakes, avionics, navigation, autopilot, environmental systems, failures and aircraft physics are separate systems.
+3. Systems are modular: electrical, fuel, engines, hydraulics, flight controls, landing gear/brakes, avionics, navigation, MCP/VNAV, autopilot/autothrottle, environmental systems, failures and aircraft physics are separate systems.
 4. Data first: cockpit controls do not directly change physics. They issue commands; a system validates the command, changes state, and produces effects/telemetry.
 5. Units are explicit: internal values must document their units. Avoid mixing Roblox studs, SI units, knots, feet and pounds without conversion at a boundary.
 6. Fixed simulation step: simulation systems should run from a controlled tick rather than depending on render frequency.
@@ -46,8 +46,12 @@ ServerScriptService
         ├── LandingGear.lua
         ├── Brakes.lua
         ├── Avionics.lua
-        ├── Autopilot.lua
+        ├── NAVReceiver.lua
         ├── Navigation.lua
+        ├── VNAV.lua
+        ├── MCP.v02.lua
+        ├── Autopilot.lua
+        ├── AutoThrottle.lua
         ├── Environment.lua
         └── Failures.lua
 
@@ -59,28 +63,44 @@ StarterPlayer
 ## System dependency direction
 
 ```text
+Cockpit / Client
+      |
+      v
 CommandRouter
-     |
-     v
+      |
+      v
  Aircraft State <---- Systems
-     |                 |
-     |                 +-- Electrical
-     |                 +-- Fuel
-     |                 +-- Engines
-     |                 +-- Hydraulics
-     |                 +-- Flight Controls
-     |                 +-- Gear/Brakes
-     |                 +-- Avionics
-     |                 +-- Navigation
-     |                 +-- Autopilot
-     |                 +-- Environment
-     |                 +-- Failures
-     v
+      |                 |
+      |                 +-- Electrical
+      |                 +-- Fuel
+      |                 +-- Engines
+      |                 +-- Hydraulics
+      |                 +-- Flight Controls
+      |                 +-- Gear/Brakes
+      |                 +-- Avionics
+      |                 +-- NAV Receivers
+      |                 +-- Navigation / FMC / VOR / ILS
+      |                 +-- MCP / VNAV
+      |                 +-- Autopilot / Autothrottle
+      |                 +-- Environment
+      |                 +-- Failures
+      |                 +-- Aerodynamic / ground physics
+      v
  Telemetry Snapshot
-     |
-     v
+      |
+      v
  Client / Cockpit / Instruments
 ```
+
+## Guidance ownership
+
+MCP stores pilot-selected targets and modes. Navigation, VNAV and raw radio/ILS producers calculate guidance inputs. Autopilot consumes those inputs and produces flight-control commands. Autothrottle consumes selected/VNAV speed targets and produces engine throttle commands. No presentation module should overwrite computed guidance state.
+
+The go-around chain is explicitly command-driven: cockpit `GoAround` → server command validation → autopilot go-around guidance + autothrottle TOGA state → engine thrust/flight-control response → telemetry. The implementation is a game-simulation approximation, not certified Boeing logic.
+
+## Engine-out integration
+
+Engine failures are server-authoritative. A failed engine loses running state/thrust, while the physics layer integrates the resulting left/right thrust asymmetry into a yaw moment and exposes `EngineIntegration` telemetry. This keeps engine failure effects downstream of the engine system rather than embedding failure logic inside the cockpit.
 
 ## Electrical source priority
 
@@ -96,6 +116,4 @@ The current `FlightSimBootstrap.server.lua` is a development installer for the p
 
 ## Current phase
 
-Foundation audit and modular-system migration.
-
-The first subsystem being upgraded is **Electrical**, because electrical availability is a prerequisite for APU/engine start, avionics, cockpit displays and many later systems.
+Core flight-management foundation: MCP/VNAV guidance, ILS/VOR receiver ownership, autopilot, autothrottle/TOGA, engine-out asymmetric-thrust integration, and deterministic subsystem contract tests are wired into the modular runtime. Remaining work continues upward into full cockpit hardware, aircraft/airport content, ATC, weather, failures and multiplayer/optimization passes.
