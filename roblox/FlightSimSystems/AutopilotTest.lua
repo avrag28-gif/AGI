@@ -1,4 +1,4 @@
--- FlightSim autopilot contract-test helpers v0.2
+-- FlightSim autopilot contract-test helpers v0.3
 -- Deterministic state-level checks. These helpers do not run Roblox physics.
 local AutopilotTest={}
 local function range(v,a,b,msg) v=tonumber(v) or 0; assert(v>=a and v<=b,msg) end
@@ -15,8 +15,16 @@ function AutopilotTest.ValidateModeConsistency(state)
  if ap.Enabled then assert(ap.Mode~="OFF","enabled autopilot cannot report OFF") end
  if ap.Mode=="LNAV" then assert(nav.Mode=="LNAV","LNAV mode not reflected in navigation") end
  if ap.Mode=="VNAV" then assert(v.Mode=="VNAV","VNAV mode not reflected in VNAV state") end
+ if ap.Mode=="VOR" then assert(nav.Mode=="VOR","VOR mode not reflected in navigation"); assert(nav.NAV1Receiver=="VOR","VOR AP mode requires NAV1 VOR receiver") end
  if ap.Mode=="APP_LOC" or ap.Mode=="APP_GS" or ap.Mode=="APP_ARMED" then assert(nav.Mode=="APP","approach mode not reflected in navigation") end
  if ap.Mode=="GO_AROUND" then assert(nav.Mode=="HDG","go-around must leave approach navigation mode") end
+ return true
+end
+function AutopilotTest.ValidateVerticalMode(state)
+ local x=state:Get(); local ap=x.Autopilot or {}; local nav=x.Navigation or {}; local v=x.VNAV or {}
+ if ap.Mode=="VS" then assert(type(ap.TargetVerticalSpeed)=="number","VS mode requires selected vertical speed") end
+ if ap.Mode=="VNAV" then assert(v.Mode=="VNAV","VNAV AP mode requires active VNAV"); assert(type(v.CommandVerticalSpeed)=="number","VNAV requires vertical-speed guidance") end
+ if ap.Mode=="ALT_HOLD" or ap.Mode=="LCHG" then assert(type(ap.TargetAltitude)=="number","vertical altitude modes require selected altitude") end
  return true
 end
 function AutopilotTest.ValidateCaptureFlags(state)
@@ -26,6 +34,6 @@ function AutopilotTest.ValidateCaptureFlags(state)
  return true
 end
 function AutopilotTest.ValidateAll(state)
- AutopilotTest.ValidateCommands(state); AutopilotTest.ValidateModeConsistency(state); AutopilotTest.ValidateCaptureFlags(state); return true
+ AutopilotTest.ValidateCommands(state); AutopilotTest.ValidateModeConsistency(state); AutopilotTest.ValidateVerticalMode(state); AutopilotTest.ValidateCaptureFlags(state); return true
 end
 return AutopilotTest
