@@ -1,4 +1,4 @@
--- FlightSim fuel system v0.5
+-- FlightSim fuel system v0.6
 -- Server-authoritative tank pumps, engine-specific feed paths, crossfeed and fuel telemetry.
 local Fuel={}; Fuel.__index=Fuel
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -9,6 +9,7 @@ local function ensure(x)
  s.LeftQuantity=tonumber(s.LeftQuantity) or x.Fuel.Left or 0; s.CenterQuantity=tonumber(s.CenterQuantity) or x.Fuel.Center or 0; s.RightQuantity=tonumber(s.RightQuantity) or x.Fuel.Right or 0; s.TotalQuantity=tonumber(s.TotalQuantity) or x.Fuel.Total or 0
  s.LeftPump=s.LeftPump~=false and ff.LeftPump~=true; s.CenterPump=s.CenterPump~=false and ff.CenterPump~=true; s.RightPump=s.RightPump~=false and ff.RightPump~=true; s.Crossfeed=s.Crossfeed==true and ff.Crossfeed~=true
  s.EngineFeed=s.EngineFeed or {[1]="AUTO",[2]="AUTO"}; s.EngineFeed[1]=s.EngineFeed[1] or "AUTO"; s.EngineFeed[2]=s.EngineFeed[2] or "AUTO"
+ s.EngineFuelAvailable=s.EngineFuelAvailable or {[1]=true,[2]=true}
  s.LowFuel=s.LowFuel==true; s.Imbalance=tonumber(s.Imbalance) or 0; s.FeedPressure=tonumber(s.FeedPressure) or 0
  return x.Fuel,s
 end
@@ -42,9 +43,24 @@ function Fuel:_feedEngine(tanks,s,index,demand)
  if used<demand and s.Crossfeed then take(other,other=="Left" and "LEFT_XFEED" or "RIGHT_XFEED") end
  return used,(#sources>0 and table.concat(sources,"+") or "NONE")
 end
+function Fuel:_pathAvailable(s,tanks,index)
+ local source=s.EngineFeed[index]
+ local own=(index==1) and "Left" or "Right"; local other=(own=="Left") and "Right" or "Left"
+ local function usable(name)
+  if name=="Left" then return s.LeftPump and tanks.Left>0 end
+  if name=="Right" then return s.RightPump and tanks.Right>0 end
+  if name=="Center" then return s.CenterPump and tanks.Center>0 end
+  return false
+ end
+ if source=="LEFT" then return usable("Left") end
+ if source=="RIGHT" then return usable("Right") end
+ if source=="CENTER" then return usable("Center") end
+ return usable("Center") or usable(own) or (s.Crossfeed and usable(other))
+end
 function Fuel:Step(dt)
  local x=self.state:Get(); local tanks,s=ensure(x)
  tanks.Left=math.max(0,tonumber(tanks.Left) or 0); tanks.Center=math.max(0,tonumber(tanks.Center) or 0); tanks.Right=math.max(0,tonumber(tanks.Right) or 0)
+ s.EngineFuelAvailable[1]=self:_pathAvailable(s,tanks,1); s.EngineFuelAvailable[2]=self:_pathAvailable(s,tanks,2)
  local d1=self:_engineDemand(x,1,x.Engines[1] and x.Engines[1].FuelFlow,dt); local d2=self:_engineDemand(x,2,x.Engines[2] and x.Engines[2].FuelFlow,dt)
  local used1,src1=self:_feedEngine(tanks,s,1,d1); local used2,src2=self:_feedEngine(tanks,s,2,d2)
  if d1>0 and used1<=0 and x.Engines[1] then x.Engines[1].FuelOn=false end; if d2>0 and used2<=0 and x.Engines[2] then x.Engines[2].FuelOn=false end
@@ -52,6 +68,7 @@ function Fuel:Step(dt)
  s.LeftQuantity=tanks.Left; s.CenterQuantity=tanks.Center; s.RightQuantity=tanks.Right; s.TotalQuantity=tanks.Total
  s.LeftFeed=s.LeftPump and tanks.Left>0; s.RightFeed=s.RightPump and tanks.Right>0; s.CenterFeed=s.CenterPump and tanks.Center>0
  s.EngineFuelSource={[1]=src1,[2]=src2}; s.EngineFuelDemand={[1]=d1,[2]=d2}; s.EngineFuelDelivered={[1]=used1,[2]=used2}; s.EngineFuelStarved={[1]=d1>0 and used1<=0,[2]=d2>0 and used2<=0}
+ s.EngineFuelAvailable[1]=s.EngineFuelAvailable[1] or used1>0; s.EngineFuelAvailable[2]=s.EngineFuelAvailable[2] or used2>0
  s.FeedPressure=clamp((s.LeftFeed or s.RightFeed or s.CenterFeed) and tanks.Total/30000 or 0,0,1)
  local wingMean=(tanks.Left+tanks.Right)/2; s.Imbalance=wingMean>0 and (tanks.Left-tanks.Right)/wingMean or 0; s.LowFuel=tanks.Total<3000
  x.Fuel=tanks
