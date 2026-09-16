@@ -1,4 +1,4 @@
--- FlightSim autothrottle speed-management controller v0.3
+-- FlightSim autothrottle speed-management controller v0.4
 -- Closed-loop game simulation; not certified Boeing autothrottle logic.
 local Config=require(script.Parent.Config)
 local AutoThrottle={}; AutoThrottle.__index=AutoThrottle
@@ -15,9 +15,30 @@ function AutoThrottle:SetEnabled(enabled)
  if not x.AutoThrottle.Enabled then x.AutoThrottle.Mode="OFF"; x.AutoThrottle.TargetSpeed=nil end
  return true
 end
+function AutoThrottle:GoAround()
+ local x=self.state:Get(); local a=x.AutoThrottle or {}
+ x.AutoThrottle=a; a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"
+ local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
+ -- Game-simulation target: retain a positive margin above the current approach speed.
+ a.TargetSpeed=clamp(math.max(120,speed+20),120,180); a.SpeedError=a.TargetSpeed-speed
+ a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}
+ for i=1,2 do
+  local e=x.Engines and x.Engines[i]
+  if engineAvailable(e) then a.ThrottleCommand[i]=1; x.Throttle[i]=1 else a.ThrottleCommand[i]=0; x.Throttle[i]=0 end
+ end
+ return true
+end
 function AutoThrottle:Step(dt)
  local x=self.state:Get(); local ap=x.Autopilot or {}; local v=x.VNAV or {}; local a=x.AutoThrottle or {}
  x.AutoThrottle=a; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}; a.Active=false; a.Protection=a.Protection or "NONE"
+ if ap.GoAround==true or a.Mode=="TOGA" then
+  local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
+  a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"; a.TargetSpeed=clamp(math.max(120,speed+20),120,180); a.SpeedError=a.TargetSpeed-speed
+  local leftAvailable=engineAvailable(x.Engines and x.Engines[1]); local rightAvailable=engineAvailable(x.Engines and x.Engines[2])
+  a.ThrottleCommand[1]=leftAvailable and 1 or 0; a.ThrottleCommand[2]=rightAvailable and 1 or 0
+  x.Throttle[1]=a.ThrottleCommand[1]; x.Throttle[2]=a.ThrottleCommand[2]
+  return true
+ end
  local target=nil
  if a.Enabled and ap.Enabled then
   if v.Mode=="VNAV" and finite(v.TargetSpeed) then target=v.TargetSpeed elseif finite(ap.TargetSpeed) then target=ap.TargetSpeed end
