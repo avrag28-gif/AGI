@@ -1,7 +1,10 @@
--- FlightSim approach / ILS signal producer v0.8
+-- FlightSim approach / ILS signal producer v0.9
 -- Simulation approximation; runway references are supplied by airport data.
+-- Position X/Z are treated as meters in the simulation layer; altitude/elevation are feet.
 -- This module produces the raw ILS candidate. NAVReceiver owns receiver selection; Navigation consumes it.
 local Approach={}; Approach.__index=Approach
+local FT_TO_M=0.3048
+local M_TO_FT=1/FT_TO_M
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function wrap(v) return (v%360+360)%360 end
 local function hdgErr(t,c) return (t-c+540)%360-180 end
@@ -36,9 +39,10 @@ function Approach:Step(dt)
  local front=along<0
  local range=math.max(r.LocalizerLength,1)
  local localizer=clamp(-lateral/range,-1,1)
- local desiredAlt=r.Elevation+math.tan(math.rad(r.GlideSlope))*math.max(-along,0)
- local verticalScale=math.max(50,horizontal*0.03)
- local gsError=clamp((x.Altitude-desiredAlt)/verticalScale,-1,1)
+ local approachDistanceM=math.max(-along,0)
+ local desiredAlt=r.Elevation+math.tan(math.rad(r.GlideSlope))*approachDistanceM*M_TO_FT
+ local verticalScaleFt=math.max(50,horizontal*0.03*M_TO_FT)
+ local gsError=clamp((x.Altitude-desiredAlt)/verticalScaleFt,-1,1)
  local locValid=front and horizontal<=range
  local gsValid=front and horizontal<=range*1.25
  local captureLoc=math.abs(localizer)<=0.12 and locValid
