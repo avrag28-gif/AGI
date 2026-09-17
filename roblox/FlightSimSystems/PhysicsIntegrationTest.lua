@@ -1,4 +1,4 @@
--- Physics force-integration regression tests v0.4
+-- Physics force-integration regression tests v0.5
 local State=require(script.Parent.State)
 local Physics=require(script.Parent.Physics)
 local FlightControls=require(script.Parent.FlightControls)
@@ -64,6 +64,21 @@ local function run()
  Physics.new(stallState):Step(1/60)
  check(stallState.EngineIntegration.StallControlFactor<normal.EngineIntegration.StallControlFactor,"stall must reduce aerodynamic control effectiveness")
  check(math.abs(stallState.RollRate)<normalRoll,"stall must reduce aileron roll response")
+
+ -- A positive bank with no roll input must generate a restoring roll-rate
+ -- command instead of leaving the aircraft indefinitely at a fixed bank.
+ local banked=baseState()
+ banked.Roll=30
+ Physics.new(banked):Step(1/60)
+ check(banked.AeroStability.RollRestoringRate<0,"positive bank must generate negative restoring roll rate")
+ check(banked.RollRate<0,"positive bank must start rolling back toward wings level")
+
+ -- Sideslip should couple into roll through the simulated lateral stability
+ -- model. The coefficient is intentionally a tunable game approximation.
+ local slipped=baseState()
+ slipped.Sideslip=5
+ Physics.new(slipped):Step(1/60)
+ check(slipped.AeroStability.SideslipRollRate<0,"positive sideslip must generate a restoring roll tendency")
 
  -- Hydraulic/control-surface integration: trim modifies the authoritative
  -- elevator surface once, and Physics consumes that surface without adding
