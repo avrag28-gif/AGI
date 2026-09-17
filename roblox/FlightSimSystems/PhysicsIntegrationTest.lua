@@ -1,4 +1,4 @@
--- Physics force-integration regression tests v0.1
+-- Physics force-integration regression tests v0.2
 local State=require(script.Parent.State)
 local Physics=require(script.Parent.Physics)
 local function check(ok,msg) assert(ok,msg) end
@@ -17,7 +17,7 @@ local function baseState()
  return s
 end
 local function run()
- -- Both engines operating at low thrust must not be classified as an engine-out.
+ -- Both engines operating must not be classified as an engine-out merely from thrust.
  local balanced=baseState()
  Physics.new(balanced):Step(1/60)
  check(balanced.EngineIntegration.EngineOut==false,"two running engines must not be flagged engine-out merely because thrust is low")
@@ -28,6 +28,7 @@ local function run()
  failed.Engines[2].Thrust=0
  Physics.new(failed):Step(1/60)
  check(failed.EngineIntegration.EngineOut==true,"one running engine and one stopped engine must flag engine-out")
+ check(math.abs(failed.EngineIntegration.YawRateContribution)<=5,"engine-out yaw contribution must remain bounded")
 
  -- A climb angle must consume longitudinal energy through gravity.
  local level=baseState()
@@ -46,6 +47,20 @@ local function run()
  lowLift.Surface.Elevator=-1
  Physics.new(lowLift):Step(1/60)
  check(lowLift.VerticalSpeed<0,"lift below weight must produce downward vertical acceleration")
+
+ -- High AoA/stall must reduce aerodynamic control authority rather than only
+ -- triggering an annunciation while leaving roll/yaw/pitch moments unchanged.
+ local normal=baseState()
+ normal.Surface.Aileron=1
+ normal.AoA=8
+ Physics.new(normal):Step(1/60)
+ local normalRoll=math.abs(normal.RollRate)
+ local stallState=baseState()
+ stallState.Surface.Aileron=1
+ stallState.Pitch=30
+ Physics.new(stallState):Step(1/60)
+ check(stallState.EngineIntegration.StallControlFactor<normal.EngineIntegration.StallControlFactor,"stall must reduce aerodynamic control effectiveness")
+ check(math.abs(stallState.RollRate)<normalRoll,"stall must reduce aileron roll response")
  return true
 end
 return {Run=run}
