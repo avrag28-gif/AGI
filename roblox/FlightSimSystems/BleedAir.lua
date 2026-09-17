@@ -1,5 +1,7 @@
--- FlightSim bleed-air / pack availability model v0.3
+-- FlightSim bleed-air / pack availability model v0.4
 -- Game-simulation abstraction; not a certified pneumatic-system model.
+-- Engine bleed is gated by engine running state and usable N2 so a newly lit
+-- engine cannot provide full pneumatic source before it has spooled.
 local BleedAir={}; BleedAir.__index=BleedAir
 local function clamp(v,a,b) return math.max(a,math.min(b,tonumber(v) or 0)) end
 function BleedAir.new(state) return setmetatable({state=state},BleedAir) end
@@ -8,9 +10,8 @@ function BleedAir:Step(dt)
  local n2_1=clamp((tonumber(e1.N2) or 0)/70,0,1); local n2_2=clamp((tonumber(e2.N2) or 0)/70,0,1); local apuOutput=clamp((tonumber(apu.RPM) or 0)/95,0,1)
  local engine1Failed=(ef[1] and ef[1].Active)==true; local engine2Failed=(ef[2] and ef[2].Active)==true
  local pack1Failed=pf.Pack1==true; local pack2Failed=pf.Pack2==true
- b.Engine1Source=e1.Running==true and not engine1Failed
- b.Engine2Source=e2.Running==true and not engine2Failed
- -- Pneumatic APU availability is independent of the electrical bus: electrical power may be supplied by the APU generator, but the pneumatic source itself is an APU state.
+ b.Engine1Source=e1.Running==true and not engine1Failed and (tonumber(e1.N2) or 0)>=50
+ b.Engine2Source=e2.Running==true and not engine2Failed and (tonumber(e2.N2) or 0)>=50
  b.APUAvailable=apu.Running==true and apuOutput>0.15
  b.APUSource=b.APUAvailable
  b.Pack1Available=not pack1Failed and (b.Engine1Source or b.APUSource)
