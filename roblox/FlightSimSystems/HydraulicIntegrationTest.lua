@@ -1,5 +1,6 @@
--- Hydraulic integration regression tests v1.1
--- These tests target the structured Hydraulic.A/B/Standby state contract.
+-- Hydraulic integration regression tests v1.2
+-- These tests target the structured Hydraulic.A/B/Standby state contract and
+-- verify consumer demand is allocated to the intended primary/alternate system.
 local State=require(script.Parent.State)
 local Hydraulic=require(script.Parent.Hydraulic)
 local LandingGear=require(script.Parent.LandingGear)
@@ -31,8 +32,31 @@ function Test.Run()
 	check(state.Brakes.HydraulicAvailable==true,"brakes did not detect structured hydraulic pressure")
 	check(state.Brakes.BrakePressure>0,"brakes did not build pressure with available hydraulic pressure")
 
-	-- Standby must remain off with no flight-control demand.
 	local hydraulic=Hydraulic.new(state,Config)
+
+	-- Demand allocation: gear load belongs to System A and normal brake load to B.
+	state.Failures.Hydraulic={A=false,B=false}
+	state.Hydraulic.A.Pressure=3000
+	state.Hydraulic.B.Pressure=3000
+	state.HydraulicDemand.FlightControls=0
+	state.HydraulicDemand.FlightControlsA=0
+	state.HydraulicDemand.FlightControlsB=0
+	state.HydraulicDemand.LandingGear=1
+	state.HydraulicDemand.Brakes=1
+	state.HydraulicDemand.Standby=0
+	hydraulic:Step(0.1)
+	check(state.HydraulicState.DemandBreakdown.GearA==1,"landing gear demand was not allocated to System A")
+	check(state.HydraulicState.DemandBreakdown.BrakesB==1,"normal brake demand was not allocated to System B")
+	check(state.HydraulicState.DemandBreakdown.BrakesAlternateA==0,"alternate brake demand appeared while System B was available")
+
+	-- With System B unavailable, brake demand must transfer to System A.
+	state.Failures.Hydraulic={A=false,B=true}
+	state.Hydraulic.A.Pressure=3000
+	state.Hydraulic.B.Pressure=0
+	hydraulic:Step(0.1)
+	check(state.HydraulicState.DemandBreakdown.BrakesAlternateA==1,"brake demand did not transfer to System A after B failure")
+
+	-- Standby must remain off with no flight-control demand.
 	state.Hydraulic.Standby.Pressure=0
 	state.HydraulicDemand.Standby=0
 	state.HydraulicDemand.FlightControls=0
