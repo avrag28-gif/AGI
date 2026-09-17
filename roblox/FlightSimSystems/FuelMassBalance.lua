@@ -13,8 +13,9 @@ end
 
 function FuelMassBalance.Calculate(state, profile)
 	local fuel = state and state.Fuel or {}
+	local weights = profile and profile.Weights or {}
 	local total = math.max(0, finite(fuel.Total, 0))
-	local maxUsable = math.max(0, finite(profile.Fuel.MaxUsableMassKg, 20897))
+	local maxUsable = math.max(0, finite(weights.MaxUsableFuelMassKg, 20897))
 	local mass = math.min(total, maxUsable)
 	return {
 		MassKg = mass,
