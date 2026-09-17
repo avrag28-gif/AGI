@@ -1,6 +1,7 @@
--- FlightSim VNAV vertical + speed guidance v1.7
+-- FlightSim VNAV vertical + speed guidance v1.8
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
+local AircraftProfile=require(script.Parent.AircraftProfile)
 local FT_PER_M=3.28084
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
@@ -23,7 +24,7 @@ local function downstreamTOD(route,index,aircraftAltitude)
  for i=index+1,#route do
   local previous=route[i-1]; local wp=route[i]
   if not previous or not wp or typeof(previous.Position)~="Vector3" or typeof(wp.Position)~="Vector3" then break end
-  totalM=totalM+distance(previous.Position,wp.Position)
+  totalM+=distance(previous.Position,wp.Position)
   local target=tonumber(wp.Altitude)
   if finite(target) and target<aircraftAltitude then
    local requiredM=math.max(0,(aircraftAltitude-target)/math.tan(math.rad(3))/FT_PER_M)
@@ -31,6 +32,14 @@ local function downstreamTOD(route,index,aircraftAltitude)
   end
  end
  return nil
+end
+local function safeSpeedBounds(envelope)
+ local vmo=tonumber(AircraftProfile.Limits and AircraftProfile.Limits.VMO)
+ if not finite(vmo) then vmo=340 end
+ local stall=tonumber(envelope.StallSpeedKt)
+ local minimum=60
+ if finite(stall) then minimum=math.max(minimum,stall+15) end
+ return minimum,math.min(340,vmo)
 end
 function VNAV.new(state) return setmetatable({state=state,lastWaypoint=nil},VNAV) end
 function VNAV:Step(dt)
@@ -71,10 +80,15 @@ function VNAV:Step(dt)
  desiredVS=clamp(desiredVS,-2500,2500)
  v.VerticalSpeed=desiredVS; v.CommandVerticalSpeed=desiredVS; v.DescentPathAngle=math.deg(pathAngle); nav.CommandAltitude=target; nav.CommandVerticalSpeed=desiredVS
  local rawSpeed=wp and tonumber(wp.Speed) or nil; local speedConstraint=wp and string.upper(tostring(wp.SpeedConstraint or "AT")) or "AT"
+ local minSafeSpeed,maxSafeSpeed=safeSpeedBounds(envelope)
  if finite(rawSpeed) then
-  local targetSpeed=clamp(rawSpeed,60,350); v.TargetSpeed=targetSpeed; v.SpeedConstraintType=speedConstraint; local speedTolerance=5
+  local requested=clamp(rawSpeed,60,maxSafeSpeed); local targetSpeed=requested
+  if requested<minSafeSpeed then targetSpeed=minSafeSpeed; v.GuidanceLimited=true; v.LimitReason=v.LimitReason or "STALL_MARGIN" end
+  if speedConstraint=="BELOW" and targetSpeed>requested then v.GuidanceLimited=true; v.LimitReason=v.LimitReason or "STALL_MARGIN" end
+  v.TargetSpeed=targetSpeed; v.SpeedConstraintType=speedConstraint; local speedTolerance=5
   if speedConstraint=="ABOVE" then v.SpeedConstraintSatisfied=speed+speedTolerance>=targetSpeed elseif speedConstraint=="BELOW" then v.SpeedConstraintSatisfied=speed-speedTolerance<=targetSpeed else v.SpeedConstraintSatisfied=math.abs(speed-targetSpeed)<=speedTolerance end
- elseif finite(ap.TargetSpeed) then v.TargetSpeed=clamp(ap.TargetSpeed,60,350); v.SpeedConstraintType="SELECTED"; v.SpeedConstraintSatisfied=math.abs(speed-v.TargetSpeed)<=5
+ elseif finite(ap.TargetSpeed) then
+  v.TargetSpeed=clamp(ap.TargetSpeed,minSafeSpeed,maxSafeSpeed); v.SpeedConstraintType="SELECTED"; v.SpeedConstraintSatisfied=math.abs(speed-v.TargetSpeed)<=5
  else v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true end
  return true
 end
