@@ -1,4 +1,7 @@
--- FlightSim engine runtime module v0.6
+-- FlightSim engine runtime module v0.7
+-- Generator availability is independent of downstream bus state to avoid the
+-- electrical <-> engine circular dependency. Starter operation still requires
+-- an electrically powered bus; Electrical consumes GeneratorAvailable on its next step.
 local Config = require(script.Parent.Config)
 local Engine = {}
 Engine.__index = Engine
@@ -16,7 +19,7 @@ end
 
 function Engine:Step(dt)
 	local x = self.state:Get()
-	local electrical = x.Electrical.Bus1 or x.Electrical.Bus2
+	local electrical = (x.Electrical.Bus1 == true) or (x.Electrical.Bus2 == true)
 	local fuelSystem = x.FuelSystem or {}
 	local failures = x.Failures and x.Failures.Engines or {}
 	local antiIce = x.AntiIce or {}
@@ -28,7 +31,6 @@ function Engine:Step(dt)
 		local fuelAvailable = (x.Fuel.Total or 0) > 0
 		local fuelPathAvailable = fuelSystem.EngineFuelAvailable == nil or fuelSystem.EngineFuelAvailable[index] ~= false
 
-		-- A failed engine is authoritative: it cannot start, spool, generate power, or produce thrust.
 		if failure and failure.Active then
 			e.FuelOn = false
 			e.Ignition = false
@@ -47,47 +49,48 @@ function Engine:Step(dt)
 		if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition and fuelAvailable and fuelPathAvailable and e.N2 >= Config.StartN2 then
 			e.Running = true
 		e.StartFailed = false
-	end
+		end
 
-	if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition and (not electrical or not fuelAvailable or not fuelPathAvailable) then
-		e.StartFailed = true
-	end
+		if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition and (not electrical or not fuelAvailable or not fuelPathAvailable) then
+			e.StartFailed = true
+		end
 
-	if usable and e.Running and (not e.FuelOn or not fuelAvailable or not fuelPathAvailable) then
-		e.Running = false
-		e.Starter = false
-	end
-
-	if usable and e.Running then
-		local targetN1 = 18 + 82 * throttle
-		local targetN2 = 58 + 34 * throttle
-		e.N1 = approach(e.N1, targetN1, 18, dt)
-		e.N2 = approach(e.N2, targetN2, 10, dt)
-
-		local targetEGT = 360 + 360 * throttle + math.max(0, throttle - 0.9) * 120
-		e.EGT = approach(e.EGT, targetEGT, 220, dt)
-		e.OilPressure = approach(e.OilPressure, 35 + 60 * (e.N2 / 100), 55, dt)
-		e.FuelFlow = math.max(0, e.N1 * (20 + 12 * throttle))
-
-		-- Anti-ice imposes a small thrust penalty when selected and available.
-		local penalty = tonumber(antiIce.EnginePenalty and antiIce.EnginePenalty[index]) or 1
-		penalty = math.clamp(penalty, 0.85, 1)
-		e.Thrust = (e.N1 / 100) * (Config.MaxThrust / 2) * penalty
-		e.GeneratorAvailable = electrical and e.N2 >= 50
-	else
-		e.N1 = approach(e.N1, 0, 18, dt)
-		e.EGT = approach(e.EGT, 20, 120, dt)
-		e.OilPressure = approach(e.OilPressure, 0, 45, dt)
-		e.FuelFlow = 0
-		e.Thrust = 0
-		e.GeneratorAvailable = false
-		if e.StartFailed and e.N2 < 8 then
+		if usable and e.Running and (not e.FuelOn or not fuelAvailable or not fuelPathAvailable) then
+			e.Running = false
 			e.Starter = false
 		end
-	end
 
-	if e.Running and e.N2 >= 46 then
-		e.Starter = false
+		if usable and e.Running then
+			local targetN1 = 18 + 82 * throttle
+			local targetN2 = 58 + 34 * throttle
+			e.N1 = approach(e.N1, targetN1, 18, dt)
+			e.N2 = approach(e.N2, targetN2, 10, dt)
+
+			local targetEGT = 360 + 360 * throttle + math.max(0, throttle - 0.9) * 120
+			e.EGT = approach(e.EGT, targetEGT, 220, dt)
+			e.OilPressure = approach(e.OilPressure, 35 + 60 * (e.N2 / 100), 55, dt)
+			e.FuelFlow = math.max(0, e.N1 * (20 + 12 * throttle))
+
+			local penalty = tonumber(antiIce.EnginePenalty and antiIce.EnginePenalty[index]) or 1
+			penalty = math.clamp(penalty, 0.85, 1)
+			e.Thrust = (e.N1 / 100) * (Config.MaxThrust / 2) * penalty
+			-- Generator output is an engine condition, not proof that its destination bus is live.
+			e.GeneratorAvailable = e.N2 >= 50
+		else
+			e.N1 = approach(e.N1, 0, 18, dt)
+			e.EGT = approach(e.EGT, 20, 120, dt)
+			e.OilPressure = approach(e.OilPressure, 0, 45, dt)
+			e.FuelFlow = 0
+			e.Thrust = 0
+			e.GeneratorAvailable = false
+			if e.StartFailed and e.N2 < 8 then
+				e.Starter = false
+			end
+		end
+
+		if e.Running and e.N2 >= 46 then
+			e.Starter = false
+		end
 	end
 end
 
