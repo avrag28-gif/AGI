@@ -1,4 +1,4 @@
--- Boeing 737-800 NG aerodynamic / ground dynamics foundation v3.9
+-- Boeing 737-800 NG aerodynamic / ground dynamics foundation v4.0
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 -- State units: Airspeed=kt, Altitude=ft, VerticalSpeed=ft/min, Position/Velocity=game-space meters.
 local Config=require(script.Parent.Config)
@@ -17,8 +17,11 @@ local function finite(v,d) v=tonumber(v); return (v and v==v and v~=math.huge an
 function Physics.new(state) return setmetatable({state=state},Physics) end
 function Physics:Step(dt)
  local x=self.state:Get(); local s=x.Surface or {}; local e1=x.Engines[1] or {}; local e2=x.Engines[2] or {}; x.EngineIntegration=x.EngineIntegration or {}; x.AeroStability=x.AeroStability or {}; dt=clamp(finite(dt,1/60),0,0.25)
- local speedKts=math.max(finite(x.Airspeed,0),0); local speedMS=speedKts*0.514444
- local weather=x.WeatherEffects or {}; local effectiveAirspeed=clamp(finite(weather.EffectiveAirspeed,speedKts),0,500); local aeroSpeedMS=effectiveAirspeed*0.514444
+ local speedKts=math.max(finite(x.Airspeed,0),0)
+ local speedMS=speedKts*0.514444
+ local weather=x.WeatherEffects or {}
+ local effectiveAirspeed=clamp(finite(weather.EffectiveAirspeed,speedKts),0,500)
+ local aeroSpeedMS=effectiveAirspeed*0.514444
  local altitudeFt=math.max(finite(x.Altitude,0),0)
  local ambientTempC=finite((x.Environment or {}).TemperatureC,Atmosphere.ISATemperatureC(altitudeFt))
  local atm=Atmosphere.State(altitudeFt,ambientTempC); local rho=atm.DensityKgM3; x.Mach=clamp(aeroSpeedMS/math.max(atm.SpeedOfSoundMS,1),0,0.95); x.DynamicTemperatureC=ambientTempC; x.AirDensityKgM3=rho
@@ -48,11 +51,6 @@ function Physics:Step(dt)
  local accel=longitudinal/math.max(mass,1); x.Airspeed=clamp(speedKts+accel*1.94384*dt,0,Config.MaxAirspeed); x.DynamicPressure=q; x.Lift=lift; x.Drag=drag; x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor; x.AoA=aoa
  local envelope=FlightEnvelope.Step(x)
  x.StallWarning=envelope.StallWarning or math.abs(aoa)>=13 and speedKts>45; x.StallActive=envelope.StallActive or stall>=1; x.OverspeedWarning=envelope.Overspeed
- -- Control effectiveness must follow the same envelope that drives the stall
- -- warning. Previously only the AoA-based stall coefficient reduced control
- -- response, so a low-speed envelope stall could still leave near-normal
- -- aileron/elevator/yaw authority. Keep the existing AoA reduction, then
- -- apply bounded envelope reductions on top without changing surface state.
  local stallControlFactor=1-0.70*stall
  if envelope.StallWarning then stallControlFactor=math.min(stallControlFactor,0.65) end
  if envelope.StallActive then stallControlFactor=math.min(stallControlFactor,0.30) end
@@ -94,6 +92,21 @@ function Physics:Step(dt)
  local gearDown=(x.GearStatus and x.GearStatus.DownLocked==true) or ((finite(gear.Nose,0)+finite(gear.Left,0)+finite(gear.Right,0))/3>=0.98); local touchdownCandidate=(not x.GroundContact) and gearDown and altitude<=2.0 and x.VerticalSpeed<=0
  if touchdownCandidate then x.GroundContact=true; altitude=0; x.VerticalSpeed=0; vsMS=0 end
  x.Altitude=altitude
- local yMeters=altitude*FT_TO_M; local forward=CFrame.Angles(math.rad(-x.Pitch),math.rad(x.Heading),0).LookVector; local wu=finite(weather.WindUKts,0); local wv=finite(weather.WindVKts,0); local verticalMS=x.GroundContact and 0 or x.VerticalSpeed*FPM_TO_MS; x.Velocity=forward*(x.Airspeed*.514444)+Vector3.new(wu*.514444,verticalMS,wv*.514444); x.Position+=x.Velocity*dt; if x.GroundContact then x.Position=Vector3.new(x.Position.X,0,x.Position.Z) else x.Position=Vector3.new(x.Position.X,yMeters,x.Position.Z) end; x.Phase=x.GroundContact and (x.Airspeed<1 and "Ground" or "TakeoffOrLanding") or "Airborne"
+ -- Keep the world-velocity convention identical to WeatherPhysics: heading 0
+ -- points along +Z, heading 90 along +X. Do not use CFrame.LookVector here:
+ -- Roblox defines LookVector as the negated Z column, which reverses that
+ -- convention and previously made Position move opposite to Heading.
+ -- Vertical velocity is integrated separately above; adding pitch to the
+ -- forward vector here would double-count climb/descent in Velocity.Y.
+ local headingRad=math.rad(finite(x.Heading,0)); local headingForward=Vector3.new(math.sin(headingRad),0,math.cos(headingRad))
+ local verticalMS=x.GroundContact and 0 or x.VerticalSpeed*FPM_TO_MS
+ local horizontalAirMS=math.sqrt(math.max(speedMS*speedMS-verticalMS*verticalMS,0))
+ local airVelocity=headingForward*horizontalAirMS
+ local wu=finite(weather.WindUKts,0); local wv=finite(weather.WindVKts,0)
+ x.Velocity=airVelocity+Vector3.new(wu*.514444,verticalMS,wv*.514444)
+ local yMeters=altitude*FT_TO_M
+ x.Position+=x.Velocity*dt
+ if x.GroundContact then x.Position=Vector3.new(x.Position.X,0,x.Position.Z) else x.Position=Vector3.new(x.Position.X,yMeters,x.Position.Z) end
+ x.Phase=x.GroundContact and (x.Airspeed<1 and "Ground" or "TakeoffOrLanding") or "Airborne"
 end
 return Physics
