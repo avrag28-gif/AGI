@@ -1,4 +1,4 @@
--- FlightSim hydraulic/control-authority regression tests v1.2
+-- FlightSim hydraulic/control-authority regression tests v1.3
 local State=require(script.Parent.State)
 local FlightControls=require(script.Parent.FlightControls)
 local Test={}
@@ -12,6 +12,7 @@ local function newState()
 	state.Controls.Aileron=0
 	state.Controls.Elevator=0
 	state.Controls.Rudder=0
+	state.Controls.YawDamper=false
 	state.Hydraulic.A.Pressure=3000
 	state.Hydraulic.B.Pressure=3000
 	state.Hydraulic.Standby.Pressure=0
@@ -71,6 +72,28 @@ function Test.Run()
 	check(math.abs(standby.Surface.Rudder)>0.20,"standby hydraulic rudder authority was not applied")
 	check(math.abs(standby.Surface.Aileron)<=0.13,"standby hydraulic pressure incorrectly restored aileron authority")
 	check(math.abs(standby.Surface.Elevator)<=0.13,"standby hydraulic pressure incorrectly restored elevator authority")
+
+	-- Yaw damper is a separate rudder input path. It may modify airborne rudder
+	-- commands, but it must not fight the ground-steering/rudder pedal path.
+	local airborneDamper=newState()
+	airborneDamper.Controls.Rudder=0
+	airborneDamper.Controls.YawDamper=true
+	airborneDamper.Sideslip=6
+	airborneDamper.YawRate=0
+	FlightControls.new(airborneDamper):Step(0.1)
+	check(airborneDamper.ControlFeel.YawDamperActive==true,"airborne yaw damper was not marked active")
+	check(airborneDamper.Surface.Rudder<0,"airborne yaw damper did not provide correcting rudder input")
+
+	local groundDamper=newState()
+	groundDamper.GroundContact=true
+	groundDamper.Airspeed=25
+	groundDamper.Controls.Rudder=0
+	groundDamper.Controls.YawDamper=true
+	groundDamper.Sideslip=6
+	groundDamper.YawRate=5
+	FlightControls.new(groundDamper):Step(0.1)
+	check(groundDamper.ControlFeel.YawDamperActive==false,"yaw damper remained active in the ground-control path")
+	check(math.abs(groundDamper.Surface.Rudder)<0.01,"ground yaw damper incorrectly injected rudder input")
 
 	return true
 end
