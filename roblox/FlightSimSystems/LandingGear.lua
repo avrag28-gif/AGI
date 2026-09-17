@@ -11,8 +11,9 @@ local function pressure(system)
 end
 function LandingGear.new(state) return setmetatable({state=state},LandingGear) end
 function LandingGear:Step(dt)
- local x=self.state:Get(); local gear=x.Gear or {}; local h=x.Hydraulic or {}; dt=math.max(tonumber(dt) or 0,0)
- local pressureA=pressure(h.A); local pressureB=pressure(h.B)
+ local x=self.state:Get(); local gear=x.Gear or {}; local h=x.Hydraulic or {}; local failures=x.FailureEffects or {}; dt=math.max(tonumber(dt) or 0,0)
+ local pressureA=failures.HydraulicAFailed==true and 0 or pressure(h.A)
+ local pressureB=failures.HydraulicBFailed==true and 0 or pressure(h.B)
  local hydraulic=math.max(pressureA,pressureB); local powered=hydraulic>=1000
  x.GearPosition=x.GearPosition or {Nose=0,Left=0,Right=0}
  local rate=powered and 0.55 or 0
