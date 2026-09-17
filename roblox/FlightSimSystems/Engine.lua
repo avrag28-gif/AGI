@@ -1,6 +1,6 @@
--- FlightSim engine runtime module v0.9
+-- FlightSim engine runtime module v1.0
 -- Simulation approximation. FuelFlow is expressed as kg/min and is consumed by Fuel.lua.
--- Generator availability is derived from engine N2; starter ignition is gated by electrical power and fuel path.
+-- CFM56-7B26 thrust rating is aircraft-profile data; the flow curve below is simulator tuning.
 local Config = require(script.Parent.Config)
 local Engine = {}
 Engine.__index = Engine
@@ -71,8 +71,14 @@ function Engine:Step(dt)
 			local targetEGT = 360 + 360 * throttle + math.max(0, throttle - 0.9) * 120
 			e.EGT = approach(e.EGT, targetEGT, 220, dt)
 			e.OilPressure = approach(e.OilPressure, 35 + 60 * (e.N2 / 100), 55, dt)
-			-- kg/min simulation flow. Fuel.lua converts this to kg for the current timestep.
-			e.FuelFlow = math.max(0, e.N1 * (20 + 12 * throttle))
+
+			-- kg/min simulation flow. This is deliberately a tuning curve, not a certified
+			-- CFM56 fuel-flow schedule. It stays in a plausible order of magnitude for
+			-- a twin-engine 737 simulation instead of the previous thousands of kg/min.
+			local n1Fraction = math.clamp(e.N1 / 100, 0, 1)
+			local idleFlow = 18
+			local additionalFlow = 90 * (n1Fraction ^ 1.35)
+			e.FuelFlow = idleFlow + additionalFlow * (0.65 + 0.35 * throttle)
 
 			local penalty = tonumber(antiIce.EnginePenalty and antiIce.EnginePenalty[index]) or 1
 			penalty = math.clamp(penalty, 0.85, 1)
