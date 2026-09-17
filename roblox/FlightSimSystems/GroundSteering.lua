@@ -12,7 +12,10 @@ function GroundSteering.new(state) return setmetatable({state=state},GroundSteer
 function GroundSteering:Step(dt)
  local x=self.state:Get(); local c=x.Controls or {}; local g=x.GearStatus or {}; local h=x.Hydraulic or {}; local gs=x.GroundSteering or {}
  local speed=math.max(tonumber(x.Airspeed) or 0,0)
- local primaryHydraulic=math.max(pressure(h.A),pressure(h.B))
+ local failures=x.FailureEffects or {}
+ local pressureA=failures.HydraulicAFailed==true and 0 or pressure(h.A)
+ local pressureB=failures.HydraulicBFailed==true and 0 or pressure(h.B)
+ local primaryHydraulic=math.max(pressureA,pressureB)
  -- Standby is not a continuous nose-steering authority source. It may be used only
  -- when both primary hydraulic sources are unavailable.
  local hydraulic=primaryHydraulic
