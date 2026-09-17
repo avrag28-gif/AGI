@@ -1,4 +1,4 @@
--- FlightSim hydraulic system v0.7
+-- FlightSim hydraulic system v0.8
 -- Simulation approximation of dual hydraulic pressure, electric backup and actuator demand.
 -- Hydraulic pressure is normalized through subsystem consumers; A/B remain independently failure-isolated.
 local Hydraulic={}; Hydraulic.__index=Hydraulic
@@ -10,9 +10,8 @@ function Hydraulic:Step(dt)
  local engines=x.Engines or {}; local e=x.Electrical or {}; local raw=x.HydraulicDemand or {}; x.HydraulicDemand=raw
  local running1=engines[1] and engines[1].Running==true; local running2=engines[2] and engines[2].Running==true; local bus1=e.Bus1==true; local bus2=e.Bus2==true
  local fc=clamp(tonumber(raw.FlightControls) or 0,0,1); local gear=clamp(tonumber(raw.LandingGear) or 0,0,1); local brakes=clamp(tonumber(raw.Brakes) or 0,0,1)
- -- FlightControls may publish asymmetric A/B demand. Preserve it and add landing-gear/brake demand
- -- instead of replacing the subsystem's allocation with a symmetric aggregate.
- local controlA=clamp(tonumber(raw.A) or fc,0,1); local controlB=clamp(tonumber(raw.B) or fc,0,1)
+ -- FlightControls owns its asymmetric allocation. Hydraulic combines it with gear/brake demand.
+ local controlA=clamp(tonumber(raw.FlightControlsA) or fc,0,1); local controlB=clamp(tonumber(raw.FlightControlsB) or fc,0,1)
  local gearA=gear*0.30; local gearB=gear*0.30; local brakeA=brakes*0.20; local brakeB=brakes*0.20
  local demandA=clamp(math.max(controlA,fc*0.50)+gearA+brakeA,0,1); local demandB=clamp(math.max(controlB,fc*0.50)+gearB+brakeB,0,1)
  local function stepPressure(current,engineSource,electricSource,failed,demand)
