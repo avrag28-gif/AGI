@@ -1,4 +1,4 @@
--- FlightSim autothrottle speed-management controller v0.6
+-- FlightSim autothrottle speed-management controller v0.7
 -- Closed-loop game simulation; not certified Boeing autothrottle logic.
 local Config=require(script.Parent.Config)
 local AutoThrottle={}; AutoThrottle.__index=AutoThrottle
@@ -6,6 +6,12 @@ local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
 local function slew(current,target,rate,dt) local d=math.max(0,rate)*math.max(0,tonumber(dt) or 0); if target>current then return math.min(target,current+d) else return math.max(target,current-d) end end
 local function engineAvailable(e) return e and (e.Running==true or (finite(e.N1) and e.N1>0)) and e.StartFailed~=true end
+local function engineFraction(e)
+ if not e then return 0 end
+ local n1=finite(e.N1) and math.max(e.N1,0) or 0
+ local thrust=finite(e.Thrust) and math.max(e.Thrust,0) or 0
+ return clamp(math.max(n1/100,thrust/30000),0,1)
+end
 function AutoThrottle.new(state) return setmetatable({state=state},AutoThrottle) end
 function AutoThrottle:SetEnabled(enabled)
  local x=self.state:Get(); x.AutoThrottle=x.AutoThrottle or {Enabled=false,Active=false,TargetSpeed=nil,SpeedError=0,ThrottleCommand={[1]=0,[2]=0},Mode="OFF",Protection="NONE"}
@@ -16,14 +22,30 @@ end
 function AutoThrottle:GoAround()
  local x=self.state:Get(); local a=x.AutoThrottle or {}; x.AutoThrottle=a; a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"
  local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0); a.TargetSpeed=clamp(math.max(120,speed+20),120,180); a.SpeedError=a.TargetSpeed-speed; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}
+ x.Throttle=x.Throttle or {[1]=0,[2]=0}
  for i=1,2 do local e=x.Engines and x.Engines[i]; if engineAvailable(e) then a.ThrottleCommand[i]=1; x.Throttle[i]=1 else a.ThrottleCommand[i]=0; x.Throttle[i]=0 end end
  return true
 end
 function AutoThrottle:Step(dt)
  local x=self.state:Get(); local ap=x.Autopilot or {}; local v=x.VNAV or {}; local a=x.AutoThrottle or {}
- x.AutoThrottle=a; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}; a.Active=false; a.Protection=a.Protection or "NONE"
+ x.AutoThrottle=a; x.Throttle=x.Throttle or {[1]=0,[2]=0}; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}; a.Active=false; a.Protection=a.Protection or "NONE"
+ -- A stall or overspeed is an envelope condition, not a reason to blindly
+ -- command more thrust. Leave the throttle where it is during stall-active;
+ -- use maximum available thrust only for an underspeed condition below stall.
+ local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
+ if x.StallActive==true then
+  a.Active=false; a.Mode="ENVELOPE_STALL"; a.Protection="STALL_ACTIVE"; a.SpeedError=0
+  a.ThrottleCommand[1]=x.Throttle[1] or 0; a.ThrottleCommand[2]=x.Throttle[2] or 0
+  return true
+ end
+ if x.OverspeedWarning==true and ap.GoAround~=true then
+  a.Active=false; a.Mode="ENVELOPE_OVERSPEED"; a.Protection="OVERSPEED"; a.SpeedError=0
+  a.ThrottleCommand[1]=slew(tonumber(a.ThrottleCommand[1]) or 0,0,0.7,dt); a.ThrottleCommand[2]=slew(tonumber(a.ThrottleCommand[2]) or 0,0,0.7,dt)
+  x.Throttle[1]=a.ThrottleCommand[1]; x.Throttle[2]=a.ThrottleCommand[2]
+  return true
+ end
  if ap.GoAround==true or a.Mode=="TOGA" then
-  local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0); a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"
+  a.Enabled=true; a.Active=true; a.Mode="TOGA"; a.Protection="TOGA"
   if not finite(a.TargetSpeed) then a.TargetSpeed=clamp(math.max(120,speed+20),120,180) end
   a.SpeedError=a.TargetSpeed-speed
   for i=1,2 do local e=x.Engines and x.Engines[i]; local ok=engineAvailable(e); a.ThrottleCommand[i]=ok and 1 or 0; x.Throttle[i]=a.ThrottleCommand[i] end
@@ -38,7 +60,6 @@ function AutoThrottle:Step(dt)
   a.Enabled=false; a.TargetSpeed=nil; a.SpeedError=0; a.Mode="OFF"; a.Protection="NONE"; a.ThrottleCommand[1]=x.Throttle[1] or 0; a.ThrottleCommand[2]=x.Throttle[2] or 0; return true
  end
  selected=clamp(selected,60,350)
- local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
  local controlTarget=selected
  if constraint=="ABOVE" and speed>=selected then controlTarget=speed elseif constraint=="BELOW" and speed<=selected then controlTarget=speed end
  local error=selected-speed
@@ -53,8 +74,16 @@ function AutoThrottle:Step(dt)
  local left=x.Engines and x.Engines[1]; local right=x.Engines and x.Engines[2]; local leftAvailable=engineAvailable(left); local rightAvailable=engineAvailable(right)
  if not leftAvailable and not rightAvailable then a.Enabled=false; a.Mode="NO_ENGINE"; a.Active=false; a.TargetSpeed=selected; a.SpeedError=error; a.Protection="NO_ENGINE"; return true end
  local availableCount=(leftAvailable and 1 or 0)+(rightAvailable and 1 or 0)
+ -- Never turn a speed command into a throttle command larger than the
+ -- physical engine availability represented by this simulation state.
+ local leftFraction=engineFraction(left); local rightFraction=engineFraction(right)
+ local minimumAvailable=math.max(leftFraction,rightFraction)
+ if raw>0 and minimumAvailable<0.02 then raw=0 end
  local maxThrust=tonumber(Config.MaxThrust) or math.huge; local thrustScale=1
- if finite(maxThrust) and maxThrust>0 then local currentTotal=(left and tonumber(left.Thrust) or 0)+(right and tonumber(right.Thrust) or 0); if raw>0 and currentTotal>maxThrust then thrustScale=clamp(maxThrust/currentTotal,0,1) end end
+ if finite(maxThrust) and maxThrust>0 then
+  local currentTotal=(left and tonumber(left.Thrust) or 0)+(right and tonumber(right.Thrust) or 0)
+  if raw>0 and currentTotal>maxThrust then thrustScale=clamp(maxThrust/currentTotal,0,1) end
+ end
  raw=clamp(raw*thrustScale,0,1)
  local rate=0.35
  a.ThrottleCommand[1]=slew(tonumber(a.ThrottleCommand[1]) or 0,leftAvailable and raw or 0,rate,dt); a.ThrottleCommand[2]=slew(tonumber(a.ThrottleCommand[2]) or 0,rightAvailable and raw or 0,rate,dt)
