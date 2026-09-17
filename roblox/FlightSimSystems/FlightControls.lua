@@ -1,4 +1,4 @@
--- FlightSim flight-control system v1.5
+-- FlightSim flight-control system v1.6
 -- Server-authoritative control-surface scheduling and hydraulic demand reporting.
 -- Hydraulic authority is separated by control group so standby pressure cannot
 -- incorrectly restore every primary flight-control surface.
@@ -34,10 +34,13 @@ function FlightControls:Step(dt)
  local manualReversion=(math.max(aHyd,bHyd)<0.05) and 0.12 or 0
  ailHyd=math.max(ailHyd,manualReversion); eleHyd=math.max(eleHyd,manualReversion)
  local rudderCommand=clamp(tonumber(c.Rudder) or 0,-1,1)
- -- Simple yaw-damper feedback. This is a simulation approximation; it is kept
- -- separate from pilot rudder input so the damper cannot silently replace it.
+ -- Yaw-damper input is an independent rudder command, not pilot pedal feedback.
+ -- Keep it out of ground steering: the ground directional-control path owns
+ -- rudder input while on the runway/taxiway. The FAA describes the yaw damper
+ -- as an independent input to the rudder PCU, separate from pilot pedals.
  local yawDamper=(c.YawDamper==true) or (ap.YawDamper==true)
- if yawDamper then
+ local yawDamperEngaged=yawDamper and not ground
+ if yawDamperEngaged then
   local beta=clamp(tonumber(x.Sideslip or x.Beta) or 0,-12,12)
   local yawRate=clamp(tonumber(x.YawRate) or 0,-10,10)
   rudderCommand=clamp(rudderCommand-beta*0.08-yawRate*0.025,-1,1)
@@ -47,14 +50,12 @@ function FlightControls:Step(dt)
  x.Surface.Aileron=approach(x.Surface.Aileron,ailTarget,9,dt); x.Surface.Elevator=approach(x.Surface.Elevator,eleTarget,7,dt); x.Surface.Rudder=approach(x.Surface.Rudder,rudTarget,6,dt); x.Surface.Flap=approach(x.Surface.Flap,flapTarget,2,dt)
  x.ControlFeel=x.ControlFeel or {}
  -- These are the actual normalized control-group authorities consumed by
- -- Autopilot. Previously these fields reported only ground/failure authority,
- -- so AP could believe the controls were healthy even when hydraulic pressure
- -- had collapsed. Surface travel and AP authority now share the same gate.
+ -- Autopilot. Surface travel and AP authority share the same hydraulic gate.
  x.ControlFeel.HydraulicAuthority=math.max(ailHyd,eleHyd,rudHyd); x.ControlFeel.DynamicAuthority=dynamicAuthority
  x.ControlFeel.AileronAuthority=clamp(ailHyd*groundAileron*ailFailure,0,1)
  x.ControlFeel.ElevatorAuthority=clamp(eleHyd*groundElevator*eleFailure,0,1)
  x.ControlFeel.RudderAuthority=clamp(rudHyd*groundRudder*rudFailure,0,1)
- x.ControlFeel.HydraulicA=aHyd; x.ControlFeel.HydraulicB=bHyd; x.ControlFeel.HydraulicStandby=sHyd; x.ControlFeel.ManualReversion=manualReversion>0; x.ControlFeel.YawDamperActive=yawDamper
+ x.ControlFeel.HydraulicA=aHyd; x.ControlFeel.HydraulicB=bHyd; x.ControlFeel.HydraulicStandby=sHyd; x.ControlFeel.ManualReversion=manualReversion>0; x.ControlFeel.YawDamperActive=yawDamperEngaged
  x.FlightControls=x.FlightControls or {}
  x.FlightControls.PrimaryHydraulicA=aHyd>0.28
  x.FlightControls.PrimaryHydraulicB=bHyd>0.28
@@ -64,7 +65,7 @@ function FlightControls:Step(dt)
  x.FlightControls.ElevatorPCU2=eleHyd>0.05
  x.FlightControls.RudderPCU=rudHyd>0.05
  x.FlightControls.AileronPCU=ailHyd>0.05
- x.FlightControls.YawDamper=yawDamper
+ x.FlightControls.YawDamper=yawDamperEngaged
  -- Demand is the requested actuator load and remains pressure-independent.
  local ailLoad=math.abs(ail)*groundAileron*ailFailure; local eleLoad=math.abs(ele)*groundElevator*eleFailure; local rudLoad=math.abs(rudderCommand)*groundRudder*rudFailure
  x.HydraulicDemand=x.HydraulicDemand or {}; x.HydraulicDemand.FlightControls=clamp(math.max(ailLoad,eleLoad,rudLoad),0,1); x.HydraulicDemand.FlightControlsA=clamp(math.max(eleLoad,rudLoad*0.7),0,1); x.HydraulicDemand.FlightControlsB=clamp(math.max(ailLoad,eleLoad*0.7),0,1)
