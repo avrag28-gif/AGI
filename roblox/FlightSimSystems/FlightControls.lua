@@ -1,4 +1,4 @@
--- FlightSim flight-control system v0.8
+-- FlightSim flight-control system v0.9
 -- Server-authoritative control-surface scheduling, failure-aware authority and hydraulic demand reporting.
 -- Values are simulation approximations, not certified aircraft data.
 local FlightControls={}; FlightControls.__index=FlightControls
@@ -20,9 +20,12 @@ function FlightControls:Step(dt)
  x.ControlFeel=x.ControlFeel or {}; x.ControlFeel.HydraulicAuthority=hydraulic; x.ControlFeel.DynamicAuthority=dynamicAuthority
  x.ControlFeel.AileronAuthority=groundAileron*clamp(failures.AileronAuthority or 1,0,1); x.ControlFeel.ElevatorAuthority=groundElevator*clamp(failures.ElevatorAuthority or 1,0,1); x.ControlFeel.RudderAuthority=groundRudder*clamp(failures.RudderAuthority or 1,0,1)
  local ailLoad=math.abs(ailTarget); local eleLoad=math.abs(eleTarget); local rudLoad=math.abs(rudTarget)
- x.HydraulicDemand=x.HydraulicDemand or {}; x.HydraulicDemand.FlightControls=clamp(math.max(ailLoad,eleLoad,rudLoad),0,1)
- x.HydraulicDemand.A=clamp(math.max(eleLoad,rudLoad*0.7),0,1)
- x.HydraulicDemand.B=clamp(math.max(ailLoad,eleLoad*0.7),0,1)
+ x.HydraulicDemand=x.HydraulicDemand or {}
+ x.HydraulicDemand.FlightControls=clamp(math.max(ailLoad,eleLoad,rudLoad),0,1)
+ -- Keep the flight-control A/B allocation separate from Hydraulic's computed total demand.
+ -- Hydraulic owns raw.A/raw.B after combining all consumers.
+ x.HydraulicDemand.FlightControlsA=clamp(math.max(eleLoad,rudLoad*0.7),0,1)
+ x.HydraulicDemand.FlightControlsB=clamp(math.max(ailLoad,eleLoad*0.7),0,1)
  return true
 end
 return FlightControls
