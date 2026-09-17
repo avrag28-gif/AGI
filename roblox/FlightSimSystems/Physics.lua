@@ -1,4 +1,4 @@
--- Boeing 737-800 NG aerodynamic / ground dynamics foundation v3.6
+-- Boeing 737-800 NG aerodynamic / ground dynamics foundation v3.7
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 -- State units: Airspeed=kt, Altitude=ft, VerticalSpeed=ft/min, Position/Velocity=game-space meters.
 local Config=require(script.Parent.Config)
@@ -28,9 +28,12 @@ function Physics:Step(dt)
  local lt=math.max(finite(e1.Thrust,0),0); local rt=math.max(finite(e2.Thrust,0),0); local thrust=lt+rt; local ground=x.GroundContact==true; local flap=clamp(finite(s.Flap,0),0,1); local gear=x.GearPosition or {}; local gearExposed=clamp((finite(gear.Nose,0)+finite(gear.Left,0)+finite(gear.Right,0))/3,0,1)
  local brakes=x.Brakes or {}; local brake=clamp(finite(brakes.BrakePressure,0),0,1); local lp=clamp(finite(brakes.LeftPressure,brake),0,1); local rp=clamp(finite(brakes.RightPressure,brake),0,1); local reverse=ground and clamp(finite(x.ReverseThrust,0),0,1) or 0
  local asym=(rt-lt)/math.max(thrust,1); x.EngineIntegration.TotalThrust=thrust; x.EngineIntegration.LeftThrust=lt; x.EngineIntegration.RightThrust=rt; x.EngineIntegration.ThrustAsymmetry=clamp(asym,-1,1); x.EngineIntegration.EngineOut=(e1.Running==true and e2.Running~=true) or (e2.Running==true and e1.Running~=true)
- local wingArea=125; local trim=clamp(finite(x.TrimPitch,0),-8,8); local pitchAngle=finite(x.Pitch,0)
+ local wingArea=125; local pitchAngle=finite(x.Pitch,0)
  local controlLoad=clamp(math.abs(finite(s.Elevator,0))+math.abs(finite(s.Aileron,0))*0.35+math.abs(finite(s.Rudder,0))*0.15,0,1.5)
- local aoa=clamp(2.5+0.15*(pitchAngle-trim)+0.20*flap+0.75*finite(s.Elevator,0),-20,30)
+ -- Trim is converted into the authoritative elevator surface in FlightControls.
+ -- Do not subtract TrimPitch here as well: doing so would apply the same
+ -- trim command twice (once through elevator and once through AoA).
+ local aoa=clamp(2.5+0.15*pitchAngle+0.20*flap+0.75*finite(s.Elevator,0),-20,30)
  local flapLift=0.52*flap+0.20*flap*flap; local flapDrag=0.025*flap+0.035*flap*flap
  local cl=(0.45+0.085*aoa+flapLift)*icingLift
  local stall=clamp((math.abs(aoa)-15)/8,0,1); cl*=1-0.75*stall
