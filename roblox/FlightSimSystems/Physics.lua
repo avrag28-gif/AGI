@@ -69,9 +69,9 @@ function Physics:Step(dt)
  x.ControlFeel.PhysicsPitchAuthority=pitchAuthority
  x.ControlFeel.PhysicsYawAuthority=yawAuthority
  local pCtrl=ele*9*qf; local rCtrl=ail*28*qf; local yCtrl=rud*9*qf
- pCtrl*=clamp(0.35+0.65*math.max(pitchAuthority,math.abs(ele)),0.35,1)
- rCtrl*=clamp(0.35+0.65*math.max(rollAuthority,math.abs(ail)),0.35,1)
- yCtrl*=clamp(0.35+0.65*math.max(yawAuthority,math.abs(rud)),0.35,1)
+ -- FlightControls has already applied hydraulic/failure authority to the surface deflection;
+ -- do not multiply it again here. These telemetry fields are for end-to-end observability.
+
  local pr=finite(x.PitchRate,0); local rr=finite(x.RollRate,0); local yr=finite(x.YawRate,0)
  if ground then local auth=clamp((speedKts-55)/40,0.1,1); pr=approach(pr,pCtrl*auth+0.05*turbP,7,dt); rr=approach(rr,rCtrl*clamp(speedKts/45,0,1)+0.05*turbR,8,dt); yr=finite((x.GroundSteering or {}).YawRate,0); x.Sideslip=approach(finite(x.Sideslip,0),clamp(crosswind*0.03,-3,3),4,dt)
  else
