@@ -1,4 +1,4 @@
--- Flight envelope helper v1.0
+-- Flight envelope helper v1.1
 -- Simulation approximation: derives load-factor/stall/overspeed indicators from
 -- current mass, atmosphere and configurable aerodynamic tuning. It is not an AFM/FCOM.
 local Profile=require(script.Parent.AircraftProfile)
@@ -15,10 +15,9 @@ local function finite(v,d)
 end
 local function atmosphere(altitudeFt,tempC)
  local h=math.max(0,finite(altitudeFt,0))*FT_TO_M
- local T=finite(tempC,15)+273.15
+ local T=math.max(150,finite(tempC,15)+273.15)
  local Tisa=288.15
  local P0=101325
- local rho0=1.225
  local lapse=-0.0065
  local p
  if h<=11000 then
@@ -32,6 +31,7 @@ local function atmosphere(altitudeFt,tempC)
  return math.max(rho,0.01),a
 end
 function Envelope.Calculate(state)
+ state=state or {}
  local wb=state.WeightBalance or {}
  local mass=math.max(finite(wb.GrossMassKg,finite(state.Mass,Profile.Weights.OperatingEmptyMassKg)),1)
  local altitude=math.max(finite(state.Altitude,0),0)
@@ -49,23 +49,27 @@ function Envelope.Calculate(state)
  local loadFactor=math.max(finite(state.LoadFactor,1),0)
  local acceleratedStallKt=stallKt*math.sqrt(math.max(loadFactor,0.01))
  local airspeed=math.max(finite(state.Airspeed,0),0)
- local vmo=Profile.Limits.VMOKcas
+ local vmo=finite(Profile.Limits.VMOKcas,340)
  local mach=math.max(finite(state.Mach,0),0)
- local mmo=Profile.Limits.MMO
+ local mmo=finite(Profile.Limits.MMO,0.82)
+ local airborne=state.GroundContact~=true
+ local stallWarning=airborne and airspeed<=stallKt*1.10
+ local stallActive=airborne and airspeed<=stallKt
  return {
   StallSpeedKt=stallKt,
   AcceleratedStallSpeedKt=acceleratedStallKt,
   StallMarginKt=airspeed-stallKt,
   StallMarginPercent=(airspeed/math.max(stallKt,1)-1)*100,
-  StallWarning=airspeed<=stallKt*1.10,
-  StallActive=airspeed<=stallKt,
+  StallWarning=stallWarning,
+  StallActive=stallActive,
   Overspeed=airspeed>vmo or mach>mmo,
-  VMO= vmo,
-  MMO= mmo,
+  VMO=vmo,
+  MMO=mmo,
   Mach=mach,
   DensityKgM3=rho,
   SpeedOfSoundMS=sound,
   CLMax=clMax,
+  Airborne=airborne,
  }
 end
 function Envelope.Step(state)
