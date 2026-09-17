@@ -11,7 +11,7 @@ local function controlAuthority(state)
  local a=clamp(tonumber(feel.AileronAuthority) or 0,0,1)
  local e=clamp(tonumber(feel.ElevatorAuthority) or 0,0,1)
  local r=clamp(tonumber(feel.RudderAuthority) or 0,0,1)
- local hydraulic=clamp((tonumber(feel.HydraulicAuthority) or 0)/1800,0,1)
+ local hydraulic=clamp(tonumber(feel.HydraulicAuthority) or 0,0,1)
  return a,e,r,hydraulic
 end
 function Autopilot.new(state) return setmetatable({state=state,bankCommand=0,pitchCommand=0},Autopilot) end
