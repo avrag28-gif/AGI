@@ -1,6 +1,7 @@
--- Physics force-integration regression tests v0.3
+-- Physics force-integration regression tests v0.4
 local State=require(script.Parent.State)
 local Physics=require(script.Parent.Physics)
+local FlightControls=require(script.Parent.FlightControls)
 local function check(ok,msg) assert(ok,msg) end
 local function baseState()
  local s=State.new()
@@ -27,6 +28,14 @@ local function run()
  Physics.new(failed):Step(1/60)
  check(failed.EngineIntegration.EngineOut==true,"one running engine and one stopped engine must flag engine-out")
  check(math.abs(failed.EngineIntegration.YawRateContribution)<=5,"engine-out yaw contribution must remain bounded")
+ check(failed.YawRate<0,"right-engine loss must produce a bounded left-yaw tendency in this sign convention")
+
+ local failedOther=baseState()
+ failedOther.Engines[1].Running=false
+ failedOther.Engines[1].Thrust=0
+ Physics.new(failedOther):Step(1/60)
+ check(failedOther.EngineIntegration.EngineOut==true,"left-engine loss must flag engine-out")
+ check(failedOther.YawRate>0,"left-engine loss must produce a bounded right-yaw tendency in this sign convention")
 
  local level=baseState()
  level.Pitch=0
@@ -55,6 +64,22 @@ local function run()
  Physics.new(stallState):Step(1/60)
  check(stallState.EngineIntegration.StallControlFactor<normal.EngineIntegration.StallControlFactor,"stall must reduce aerodynamic control effectiveness")
  check(math.abs(stallState.RollRate)<normalRoll,"stall must reduce aileron roll response")
+
+ -- Hydraulic/control-surface integration: trim modifies the authoritative
+ -- elevator surface once, and Physics consumes that surface without adding
+ -- TrimPitch a second time.
+ local trimState=baseState()
+ trimState.Controls.Elevator=0
+ trimState.TrimPitch=5
+ trimState.Hydraulic.A.Pressure=3000
+ trimState.Hydraulic.B.Pressure=3000
+ FlightControls.new(trimState):Step(0.1)
+ check(trimState.Surface.Elevator>0.35,"pitch trim did not produce the expected bounded elevator contribution")
+ local neutralTrim=baseState()
+ neutralTrim.Controls.Elevator=0
+ neutralTrim.TrimPitch=0
+ FlightControls.new(neutralTrim):Step(0.1)
+ check(math.abs(trimState.Surface.Elevator)>math.abs(neutralTrim.Surface.Elevator),"trim did not change elevator surface relative to neutral trim")
 
  -- Yaw is an attitude angle, while YawRate is angular rate. They must not
  -- share the same state value.
