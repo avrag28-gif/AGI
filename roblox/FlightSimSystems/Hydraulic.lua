@@ -1,4 +1,4 @@
--- FlightSim hydraulic system v1.2
+-- FlightSim hydraulic system v1.3
 -- State contract: Hydraulic.A/B/Standby are structured hydraulic-system records.
 -- The standby system is modeled as an electrically driven alternate source.
 -- Primary-system demand is reported by consumers; standby demand is derived when
@@ -67,18 +67,17 @@ function Hydraulic:Step(dt)
 	stepSystem(A,running1,bus1,f.A==true,demandA)
 	stepSystem(B,running2,bus2,f.B==true,demandB)
 
-	-- A failed/low primary system can request the standby source when flight-control
-	-- demand exists. An explicit Standby demand still takes precedence when provided.
-	local explicitStandby=tonumber(raw.Standby)
+	-- State initializes HydraulicDemand.Standby to 0, so zero is not an explicit
+	-- override. Only a positive explicit value overrides automatic standby demand.
+	local explicitStandby=tonumber(raw.Standby) or 0
 	local standbyDemand
-	if explicitStandby~=nil then
+	if explicitStandby>0 then
 		standbyDemand=clamp(explicitStandby,0,1)
 	else
 		local primaryUnavailableA=(f.A==true) or not A.Available
 		local primaryUnavailableB=(f.B==true) or not B.Available
-		local controlBackupDemand=fc
-		if primaryUnavailableA or primaryUnavailableB then
-			standbyDemand=clamp(controlBackupDemand,0,1)
+		if (primaryUnavailableA or primaryUnavailableB) and fc>0 then
+			standbyDemand=fc
 		else
 			standbyDemand=0
 		end
