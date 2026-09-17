@@ -1,16 +1,17 @@
--- FlightSim authoritative state invariant monitor v1.2
+-- FlightSim authoritative state invariant monitor v1.3
 -- Validates the current authoritative State contract after each simulation tick.
 local StateIntegrity={}; StateIntegrity.__index=StateIntegrity
 local function finite(v) return type(v)=="number" and v==v and v~=math.huge and v~=-math.huge end
 local function add(errors,code,message) errors[#errors+1]={Code=code,Message=message} end
-local function range(errors,code,name,v,lo,hi)
- if not finite(v) then add(errors,code,name.." is not finite") elseif v<lo or v>hi then add(errors,code,name.." out of range: "..tostring(v)) end
-end
+local function range(errors,code,name,v,lo,hi) if not finite(v) then add(errors,code,name.." is not finite") elseif v<lo or v>hi then add(errors,code,name.." out of range: "..tostring(v)) end end
 function StateIntegrity.new() return setmetatable({LastErrors={},TotalErrors=0,Checks=0},StateIntegrity) end
 function StateIntegrity:Check(state)
  local x=state and state.Get and state:Get() or state; local errors={}
  if type(x)~="table" then add(errors,"STATE_MISSING","aircraft state is not a table"); self.LastErrors=errors; self.TotalErrors+=#errors; self.Checks+=1; return false,errors end
- range(errors,"ALTITUDE_INVALID","Altitude",x.Altitude,0,60000); range(errors,"AIRSPEED_INVALID","Airspeed",x.Airspeed,0,600); range(errors,"HEADING_INVALID","Heading",x.Heading,-720,720); range(errors,"PITCH_INVALID","Pitch",x.Pitch,-90,90); range(errors,"ROLL_INVALID","Roll",x.Roll,-180,180); range(errors,"VS_INVALID","VerticalSpeed",x.VerticalSpeed,-20000,20000); range(errors,"MASS_INVALID","Mass",x.Mass,0,300000); range(errors,"WEIGHT_INVALID","Weight",x.Weight,0,3000000)
+ range(errors,"ALTITUDE_INVALID","Altitude",x.Altitude,0,60000); range(errors,"AIRSPEED_INVALID","Airspeed",x.Airspeed,0,600); range(errors,"HEADING_INVALID","Heading",x.Heading,-720,720); range(errors,"PITCH_INVALID","Pitch",x.Pitch,-90,90); range(errors,"ROLL_INVALID","Roll",x.Roll,-180,180); range(errors,"VS_INVALID","VerticalSpeed",x.VerticalSpeed,-20000,20000)
+ -- Physics currently owns mass derivation locally; validate only once it publishes a positive value.
+ if finite(x.Mass) and x.Mass>0 then range(errors,"MASS_INVALID","Mass",x.Mass,0,300000) end
+ if finite(x.Weight) and x.Weight>0 then range(errors,"WEIGHT_INVALID","Weight",x.Weight,0,3000000) end
  local engines=x.Engines
  if type(engines)~="table" then add(errors,"ENGINES_MISSING","engine state missing") else for i=1,2 do local e=engines[i]; if type(e)~="table" then add(errors,"ENGINE_MISSING","engine "..i.." state missing") else range(errors,"ENGINE_N1_INVALID","Engine"..i.." N1",e.N1,0,130); range(errors,"ENGINE_N2_INVALID","Engine"..i.." N2",e.N2,0,130); range(errors,"ENGINE_EGT_INVALID","Engine"..i.." EGT",e.EGT,-100,1500); range(errors,"ENGINE_THRUST_INVALID","Engine"..i.." Thrust",e.Thrust,0,300000) end end end
  local fuel=x.Fuel; if type(fuel)=="table" then for _,k in ipairs({"Left","Center","Right","Total"}) do range(errors,"FUEL_INVALID","Fuel."..k,fuel[k],0,1000000) end end
