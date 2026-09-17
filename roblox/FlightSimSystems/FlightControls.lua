@@ -1,4 +1,4 @@
--- FlightSim flight-control system v1.2
+-- FlightSim flight-control system v1.3
 -- Server-authoritative control-surface scheduling and hydraulic demand reporting.
 -- Hydraulic authority is separated by control group so standby pressure cannot
 -- incorrectly restore every primary flight-control surface.
@@ -27,12 +27,31 @@ function FlightControls:Step(dt)
  -- primary hydraulic systems are unavailable. This is not an AFM/FCOM model.
  local manualReversion=(math.max(aHyd,bHyd)<0.05) and 0.12 or 0
  ailAuthority=math.max(ailAuthority,manualReversion); eleAuthority=math.max(eleAuthority,manualReversion)
- local ailTarget=ail*ailAuthority*groundAileron*ailFailure; local eleTarget=ele*eleAuthority*groundElevator*eleFailure; local rudTarget=clamp(c.Rudder or 0,-1,1)*rudAuthority*groundRudder*rudFailure
+ local rudderCommand=clamp(tonumber(c.Rudder) or 0,-1,1)
+ -- Simple yaw-damper feedback. This is a simulation approximation; it is kept
+ -- separate from pilot rudder input so the damper cannot silently replace it.
+ local yawDamper=(c.YawDamper==true) or (ap.YawDamper==true)
+ if yawDamper then
+  local beta=clamp(tonumber(x.Sideslip or x.Beta) or 0,-12,12)
+  local yawRate=clamp(tonumber(x.YawRate) or 0,-10,10)
+  rudderCommand=clamp(rudderCommand-beta*0.08-yawRate*0.025,-1,1)
+ end
+ local ailTarget=ail*ailAuthority*groundAileron*ailFailure; local eleTarget=ele*eleAuthority*groundElevator*eleFailure; local rudTarget=rudderCommand*rudAuthority*groundRudder*rudFailure
  local flapTarget=(x.FlapSystem and tonumber(x.FlapSystem.Target) or nil); flapTarget=clamp((flapTarget~=nil and flapTarget/40 or tonumber(c.Flap) or 0),0,1)
  x.Surface.Aileron=approach(x.Surface.Aileron,ailTarget,9,dt); x.Surface.Elevator=approach(x.Surface.Elevator,eleTarget,7,dt); x.Surface.Rudder=approach(x.Surface.Rudder,rudTarget,6,dt); x.Surface.Flap=approach(x.Surface.Flap,flapTarget,2,dt)
- x.ControlFeel=x.ControlFeel or {}; x.ControlFeel.HydraulicAuthority=math.max(ailHyd,eleHyd,rudHyd); x.ControlFeel.DynamicAuthority=dynamicAuthority; x.ControlFeel.AileronAuthority=groundAileron*ailFailure; x.ControlFeel.ElevatorAuthority=groundElevator*eleFailure; x.ControlFeel.RudderAuthority=groundRudder*rudFailure; x.ControlFeel.HydraulicA=aHyd; x.ControlFeel.HydraulicB=bHyd; x.ControlFeel.HydraulicStandby=sHyd; x.ControlFeel.ManualReversion=manualReversion>0
+ x.ControlFeel=x.ControlFeel or {}; x.ControlFeel.HydraulicAuthority=math.max(ailHyd,eleHyd,rudHyd); x.ControlFeel.DynamicAuthority=dynamicAuthority; x.ControlFeel.AileronAuthority=groundAileron*ailFailure; x.ControlFeel.ElevatorAuthority=groundElevator*eleFailure; x.ControlFeel.RudderAuthority=groundRudder*rudFailure; x.ControlFeel.HydraulicA=aHyd; x.ControlFeel.HydraulicB=bHyd; x.ControlFeel.HydraulicStandby=sHyd; x.ControlFeel.ManualReversion=manualReversion>0; x.ControlFeel.YawDamperActive=yawDamper
+ x.FlightControls=x.FlightControls or {}
+ x.FlightControls.PrimaryHydraulicA=aHyd>0.28
+ x.FlightControls.PrimaryHydraulicB=bHyd>0.28
+ x.FlightControls.ManualReversion=manualReversion>0
+ x.FlightControls.FeelDifferential=clamp((aHyd-bHyd)*dynamicAuthority,-1,1)
+ x.FlightControls.ElevatorPCU1=eleAuthority>0.05
+ x.FlightControls.ElevatorPCU2=eleAuthority>0.05
+ x.FlightControls.RudderPCU=rudAuthority>0.05
+ x.FlightControls.AileronPCU=ailAuthority>0.05
+ x.FlightControls.YawDamper=yawDamper
  -- Demand is the requested actuator load and remains pressure-independent.
- local ailLoad=math.abs(ail)*groundAileron*ailFailure; local eleLoad=math.abs(ele)*groundElevator*eleFailure; local rudLoad=math.abs(clamp(c.Rudder or 0,-1,1))*groundRudder*rudFailure
+ local ailLoad=math.abs(ail)*groundAileron*ailFailure; local eleLoad=math.abs(ele)*groundElevator*eleFailure; local rudLoad=math.abs(rudderCommand)*groundRudder*rudFailure
  x.HydraulicDemand=x.HydraulicDemand or {}; x.HydraulicDemand.FlightControls=clamp(math.max(ailLoad,eleLoad,rudLoad),0,1); x.HydraulicDemand.FlightControlsA=clamp(math.max(eleLoad,rudLoad*0.7),0,1); x.HydraulicDemand.FlightControlsB=clamp(math.max(ailLoad,eleLoad*0.7),0,1)
  return true
 end
