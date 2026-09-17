@@ -1,5 +1,8 @@
--- FlightSim flight-control system v1.7
+-- FlightSim flight-control system v1.8
 -- Server-authoritative control-surface scheduling and hydraulic demand reporting.
+-- Explicit hydraulic failures are applied immediately to control authority so
+-- the runtime's FlightControls-before-Hydraulic ordering cannot leave one
+-- extra simulation tick of full hydraulic authority.
 local FlightControls={}; FlightControls.__index=FlightControls
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function approach(v,t,r,dt) local d=t-v; local s=r*dt; if math.abs(d)<=s then return t end return v+(d>0 and s or -s) end
@@ -7,7 +10,15 @@ local function pressure(system) return type(system)=="table" and math.max(tonumb
 function FlightControls.new(state) return setmetatable({state=state},FlightControls) end
 function FlightControls:Step(dt)
  local x=self.state:Get(); local c=x.Controls or {}; local ap=x.Autopilot or {}; local failures=x.FailureEffects or {}; local h=x.Hydraulic or {}
- local speed=math.max(tonumber(x.Airspeed) or 0,0); local pA=pressure(h.A); local pB=pressure(h.B); local pS=pressure(h.Standby)
+ local speed=math.max(tonumber(x.Airspeed) or 0,0)
+ -- Failures.Step() runs before FlightControls in the runtime. Treat a declared
+ -- hydraulic failure as zero effective pressure immediately; otherwise the
+ -- stale pressure from the previous Hydraulic step would survive one tick.
+ local hydraulicAFailed=failures.HydraulicAFailed==true
+ local hydraulicBFailed=failures.HydraulicBFailed==true
+ local pA=hydraulicAFailed and 0 or pressure(h.A)
+ local pB=hydraulicBFailed and 0 or pressure(h.B)
+ local pS=pressure(h.Standby)
  local aHyd=clamp(pA/1800,0,1); local bHyd=clamp(pB/1800,0,1); local sHyd=clamp(pS/1800,0,1)
  local dynamicAuthority=clamp(0.22+speed/105,0.22,1.15); local ground=x.GroundContact==true
  x.Surface=x.Surface or {Aileron=0,Elevator=0,Rudder=0,Flap=0,Speedbrake=0,SpoilerLeft=0,SpoilerRight=0}
