@@ -1,4 +1,4 @@
--- FlightSim autopilot / VOR / ILS / VNAV controller v1.4
+-- FlightSim autopilot / VOR / ILS / VNAV controller v1.5
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -46,7 +46,8 @@ function Autopilot:Step(dt)
  local bankGain=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 1/12 or 1/30
  local targetBank=clamp(he*bankGain,-bankLimit,bankLimit)
  -- Approach geometry defines localizer as signed lateral displacement normalized by localizer length.
- -- Negative localizer means the aircraft is left of the runway centerline for the runway heading convention.
+ -- Positive localizer means the aircraft is left of the runway centerline for the runway heading convention,
+ -- so the autopilot commands a positive/right correction toward centerline.
  if ap.Mode=="APP_LOC" or ap.Mode=="APP_GS" then
   local loc=finite(ils and ils.Localizer) and ils.Localizer or 0
   targetBank=clamp(loc*1.8,-bankLimit,bankLimit)
@@ -60,7 +61,7 @@ function Autopilot:Step(dt)
  elseif ap.Mode=="ALT_HOLD" then targetPitch=clamp(altitudeError/900,-0.25,0.25)
  elseif ap.Mode=="LCHG" then targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit)
  elseif ap.Mode=="VNAV" then targetPitch=clamp((v.CommandVerticalSpeed or 0)/2500,-pitchLimit,pitchLimit)
- elseif ap.Mode=="APP_GS" then local gsError=finite(ils and ils.GlideSlopeError) and ils.GlideSlopeError or 0; targetPitch=clamp(gsError/3,-pitchLimit,pitchLimit)
+ elseif ap.Mode=="APP_GS" then local gsError=finite(ils and ils.GlideSlopeError) and ils.GlideSlopeError or 0; targetPitch=clamp(-gsError/3,-pitchLimit,pitchLimit)
  else targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit) end
  self.bankCommand=slew(self.bankCommand,targetBank,2.2,dt); self.pitchCommand=slew(self.pitchCommand,targetPitch,1.8,dt)
  ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand
