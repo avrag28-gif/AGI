@@ -19,7 +19,10 @@ end
 function Brakes.new(state) return setmetatable({state=state},Brakes) end
 function Brakes:Step(dt)
  local x=self.state:Get(); local b=x.Brakes or {}; x.Brakes=b; local h=x.Hydraulic or {}; dt=math.max(tonumber(dt) or 0,0)
- local pressureA=pressure(h.A); local pressureB=pressure(h.B); local hydraulic=math.max(pressureA,pressureB)
+ local failures=x.FailureEffects or {}
+ local pressureA=failures.HydraulicAFailed==true and 0 or pressure(h.A)
+ local pressureB=failures.HydraulicBFailed==true and 0 or pressure(h.B)
+ local hydraulic=math.max(pressureA,pressureB)
  local available=clamp(hydraulic/1800,0,1)
  local gear=x.GearStatus or {}; local wheelContact=x.GroundContact==true and gear.DownLocked==true
  local toe=clamp(tonumber(b.ToeBrake) or 0,0,1)
