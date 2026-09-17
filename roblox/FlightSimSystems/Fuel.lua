@@ -1,4 +1,4 @@
--- FlightSim fuel system v0.8
+-- FlightSim fuel system v0.9
 -- Server-authoritative tank pumps, engine-specific feed paths, crossfeed and fuel-power interlock.
 -- Game simulation only; quantities and flow rates are tunable simulation values.
 local Fuel={}; Fuel.__index=Fuel
@@ -8,10 +8,11 @@ local function ensure(x)
  x.FuelSystem=x.FuelSystem or {}
  local s=x.FuelSystem; local ff=x.Failures and x.Failures.Fuel or {}
  s.LeftQuantity=tonumber(s.LeftQuantity) or x.Fuel.Left or 0; s.CenterQuantity=tonumber(s.CenterQuantity) or x.Fuel.Center or 0; s.RightQuantity=tonumber(s.RightQuantity) or x.Fuel.Right or 0; s.TotalQuantity=tonumber(s.TotalQuantity) or x.Fuel.Total or 0
- s.LeftPumpSwitch=s.LeftPumpSwitch~=false and (s.LeftPump~=false); s.CenterPumpSwitch=s.CenterPumpSwitch~=false and (s.CenterPump~=false); s.RightPumpSwitch=s.RightPumpSwitch~=false and (s.RightPump~=false)
- s.CrossfeedSwitch=s.CrossfeedSwitch==true or s.Crossfeed==true
+ -- Missing switch state must fail safe to OFF. The authoritative cold-and-dark state also starts OFF.
+ s.LeftPumpSwitch=s.LeftPumpSwitch==true; s.CenterPumpSwitch=s.CenterPumpSwitch==true; s.RightPumpSwitch=s.RightPumpSwitch==true
+ s.CrossfeedSwitch=s.CrossfeedSwitch==true
  s.EngineFeed=s.EngineFeed or {[1]="AUTO",[2]="AUTO"}; s.EngineFeed[1]=s.EngineFeed[1] or "AUTO"; s.EngineFeed[2]=s.EngineFeed[2] or "AUTO"
- s.EngineFuelAvailable=s.EngineFuelAvailable or {[1]=true,[2]=true}
+ s.EngineFuelAvailable=s.EngineFuelAvailable or {[1]=false,[2]=false}
  s.LowFuel=s.LowFuel==true; s.Imbalance=tonumber(s.Imbalance) or 0; s.FeedPressure=tonumber(s.FeedPressure) or 0
  return x.Fuel,s,ff
 end
@@ -61,8 +62,9 @@ function Fuel:Step(dt)
  local x=self.state:Get(); local tanks,s,ff=ensure(x)
  tanks.Left=math.max(0,tonumber(tanks.Left) or 0); tanks.Center=math.max(0,tonumber(tanks.Center) or 0); tanks.Right=math.max(0,tonumber(tanks.Right) or 0)
  local electrical=x.Electrical or {}
- local pumpPower=(electrical.Battery==true or electrical.ExternalPower==true or electrical.APU==true or electrical.Bus1==true or electrical.Bus2==true)
- -- Switch positions are persistent cockpit commands; Pump fields are effective availability.
+ -- Fuel pumps are treated as electrically powered AC loads in this simulation.
+ -- Do not infer pump power merely from the APU switch request; require an actual source.
+ local pumpPower=(electrical.ExternalPower==true or electrical.APUGeneratorAvailable==true or electrical.Bus1==true or electrical.Bus2==true)
  s.LeftPump=s.LeftPumpSwitch==true and ff.LeftPump~=true and pumpPower
  s.CenterPump=s.CenterPumpSwitch==true and ff.CenterPump~=true and pumpPower
  s.RightPump=s.RightPumpSwitch==true and ff.RightPump~=true and pumpPower
@@ -70,7 +72,8 @@ function Fuel:Step(dt)
  s.EngineFuelAvailable[1]=self:_pathAvailable(s,tanks,1); s.EngineFuelAvailable[2]=self:_pathAvailable(s,tanks,2)
  local d1=self:_engineDemand(x,1,x.Engines[1] and x.Engines[1].FuelFlow,dt); local d2=self:_engineDemand(x,2,x.Engines[2] and x.Engines[2].FuelFlow,dt)
  local used1,src1=self:_feedEngine(tanks,s,1,d1); local used2,src2=self:_feedEngine(tanks,s,2,d2)
- if d1>0 and used1<=0 and x.Engines[1] then x.Engines[1].FuelOn=false end; if d2>0 and used2<=0 and x.Engines[2] then x.Engines[2].FuelOn=false end
+ -- Fuel starvation is an engine/system condition, not a cockpit fuel-switch command.
+ -- Keep FuelOn unchanged so restoring a valid feed path can recover the engine state.
  tanks.Total=math.max(0,tanks.Left+tanks.Center+tanks.Right)
  s.LeftQuantity=tanks.Left; s.CenterQuantity=tanks.Center; s.RightQuantity=tanks.Right; s.TotalQuantity=tanks.Total
  s.LeftFeed=s.LeftPump and tanks.Left>0; s.RightFeed=s.RightPump and tanks.Right>0; s.CenterFeed=s.CenterPump and tanks.Center>0
