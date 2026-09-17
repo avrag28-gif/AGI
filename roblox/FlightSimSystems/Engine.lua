@@ -1,6 +1,6 @@
--- FlightSim engine runtime module v0.8
--- Simulation approximation. Generator availability is derived from engine N2,
--- while starter ignition is gated by electrical power and an actual fuel path.
+-- FlightSim engine runtime module v0.9
+-- Simulation approximation. FuelFlow is expressed as kg/min and is consumed by Fuel.lua.
+-- Generator availability is derived from engine N2; starter ignition is gated by electrical power and fuel path.
 local Config = require(script.Parent.Config)
 local Engine = {}
 Engine.__index = Engine
@@ -45,8 +45,6 @@ function Engine:Step(dt)
 			e.N2 = approach(e.N2, e.Running and (55 + 35 * throttle) or 0, e.Running and 12 or 5, dt)
 		end
 
-		-- A commanded start is successful only when BOTH electrical starter power
-		-- and a currently available fuel path exist.
 		if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition
 			and electrical and fuelAvailable and fuelPathAvailable
 			and e.N2 >= Config.StartN2 then
@@ -73,6 +71,7 @@ function Engine:Step(dt)
 			local targetEGT = 360 + 360 * throttle + math.max(0, throttle - 0.9) * 120
 			e.EGT = approach(e.EGT, targetEGT, 220, dt)
 			e.OilPressure = approach(e.OilPressure, 35 + 60 * (e.N2 / 100), 55, dt)
+			-- kg/min simulation flow. Fuel.lua converts this to kg for the current timestep.
 			e.FuelFlow = math.max(0, e.N1 * (20 + 12 * throttle))
 
 			local penalty = tonumber(antiIce.EnginePenalty and antiIce.EnginePenalty[index]) or 1
