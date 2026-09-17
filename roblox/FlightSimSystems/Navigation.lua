@@ -2,6 +2,7 @@
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
+local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
 local function wrap360(v) return (v%360+360)%360 end
 local function headingError(t,c) return (t-c+540)%360-180 end
 local function distance2D(a,b) local dx,dz=b.X-a.X,b.Z-a.Z; return math.sqrt(dx*dx+dz*dz) end
@@ -35,12 +36,9 @@ function Navigation:Step(dt)
    local pathCourse=(prev and typeof(prev.Position)=="Vector3") and segmentCourse(prev.Position,wp.Position) or desired
    local xte=tonumber(nav.CrossTrackError) or 0
    nav.PathCourse=pathCourse
-   -- Intercept grows with XTE but is limited to a practical capture angle.
-   -- A modest look-ahead keeps the command stable near the active leg.
    local lookAhead=clamp(nav.DistanceToWaypoint*0.35,750,5000)
    local intercept=math.deg(math.atan(xte/math.max(1,lookAhead)))
    intercept=clamp(intercept,-30,30)
-   -- Add track-error correction when velocity is available; otherwise fall back to heading.
    local referenceTrack=track or (finite(x.Heading) and wrap360(x.Heading) or pathCourse)
    local trackError=headingError(pathCourse,referenceTrack)
    local trackCorrection=clamp(trackError*0.65,-20,20)
