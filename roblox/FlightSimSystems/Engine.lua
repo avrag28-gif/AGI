@@ -1,9 +1,14 @@
--- FlightSim engine runtime module v1.1
+-- FlightSim engine runtime module v1.2
 -- Simulation approximation. FuelFlow is expressed as kg/min and is consumed by Fuel.lua.
 -- CFM56-7B26 thrust rating is aircraft-profile data; the performance curve below is simulator tuning.
 local Config = require(script.Parent.Config)
 local Engine = {}
 Engine.__index = Engine
+
+local FT_TO_M = 0.3048
+local G = 9.80665
+local R = 287.05287
+local GAMMA = 1.4
 
 local function approach(value, target, rate, dt)
 	local delta = target - value
@@ -24,9 +29,24 @@ local function finite(v, fallback)
 	return fallback
 end
 
-local function isaTemperatureC(altitudeFt)
-	-- ISA troposphere approximation, adequate for this game-simulation layer.
-	return 15 - 1.9812 * math.max(0, altitudeFt) / 1000
+local function atmosphere(altitudeFt, ambientTempC)
+	local h = math.max(0, altitudeFt) * FT_TO_M
+	local T0 = 288.15
+	local P0 = 101325
+	local lapse = -0.0065
+	local isaTempK
+	local pressure
+	if h <= 11000 then
+		isaTempK = T0 + lapse * h
+		pressure = P0 * (isaTempK / T0) ^ (-G / (lapse * R))
+	else
+		isaTempK = 216.65
+		pressure = 22632.06 * math.exp(-G * (h - 11000) / (R * isaTempK))
+	end
+	local tempK = finite(ambientTempC, isaTempK - 273.15) + 273.15
+	local density = pressure / (R * math.max(tempK, 150))
+	local soundSpeed = math.sqrt(GAMMA * R * math.max(tempK, 150))
+	return isaTempK - 273.15, density, soundSpeed
 end
 
 local function thrustAvailableFactor(altitudeFt, ambientTempC, mach)
@@ -34,8 +54,8 @@ local function thrustAvailableFactor(altitudeFt, ambientTempC, mach)
 	-- It captures the dominant trend: less available thrust with altitude and
 	-- hot-day conditions, with a small ram-recovery benefit at speed.
 	local altitude = clamp(math.max(0, altitudeFt) / 41000, 0, 1)
+	local isa = select(1, atmosphere(altitudeFt, ambientTempC))
 	local pressureFactor = math.exp(-1.15 * altitude)
-	local isa = isaTemperatureC(altitudeFt)
 	local hotPenalty = clamp(1 - math.max(0, ambientTempC - isa) * 0.006, 0.72, 1)
 	local coldBenefit = clamp(1 + math.max(0, isa - ambientTempC) * 0.0015, 0.97, 1.04)
 	local ram = clamp(1 + clamp(mach, 0, 0.82) * 0.12, 1, 1.10)
@@ -55,8 +75,10 @@ function Engine:Step(dt)
 	local environment = x.Environment or {}
 	local weather = x.WeatherEffects or {}
 	local altitudeFt = math.max(0, finite(x.Altitude, 0))
-	local ambientTempC = finite(environment.TemperatureC, finite(weather.TemperatureC, 15 - 1.9812 * altitudeFt / 1000))
-	local mach = clamp(finite(x.Mach, (finite(x.Airspeed, 0) / 661.47)), 0, 0.90)
+	local isaTempC, _, speedOfSound = atmosphere(altitudeFt, nil)
+	local ambientTempC = finite(environment.TemperatureC, finite(weather.TemperatureC, isaTempC))
+	local speedOfSoundKts = speedOfSound / 0.514444
+	local mach = clamp(finite(x.Mach, finite(x.Airspeed, 0) / math.max(speedOfSoundKts, 1)), 0, 0.90)
 	local availableFactor = thrustAvailableFactor(altitudeFt, ambientTempC, mach)
 
 	for index = 1, 2 do
