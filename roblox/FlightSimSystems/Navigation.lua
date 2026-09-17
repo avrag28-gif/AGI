@@ -1,4 +1,4 @@
--- FlightSim navigation / LNAV / VOR / ILS guidance v1.2
+-- FlightSim navigation / LNAV / VOR / ILS guidance v1.3
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -22,6 +22,7 @@ function Navigation:Step(dt)
  local pos=typeof(x.Position)=="Vector3" and x.Position or Vector3.zero
  local track=velocityTrack(typeof(x.Velocity)=="Vector3" and x.Velocity or Vector3.zero)
  nav.GroundTrack=track
+ local heading=finite(x.Heading) and wrap360(x.Heading) or 0
  if wp and typeof(wp.Position)=="Vector3" then
   local prev=route[i-1]; nav.DistanceToWaypoint=distance2D(pos,wp.Position); nav.BearingToWaypoint=bearing(pos,wp.Position)
   nav.CrossTrackError=(prev and typeof(prev.Position)=="Vector3") and crossTrack(prev.Position,wp.Position,pos) or 0
@@ -46,20 +47,20 @@ function Navigation:Step(dt)
    nav.LNAVInterceptAngle=intercept
    nav.LNAVTrackError=trackError
   elseif nav.Mode=="VOR" then
-   local vor=nav.NAV1Signal; if nav.NAV1Receiver=="VOR" and vor and vor.Available then desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8) else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
+   local vor=nav.NAV1Signal; if nav.NAV1Receiver=="VOR" and vor and vor.Available then desired=wrap360(vor.Course-clamp(tonumber(vor.CourseError) or 0,-30,30)*0.8) else desired=wrap360(x.Autopilot.TargetHeading or heading) end
   elseif nav.Mode=="APP" then
    local ils=nav.NAV1Signal
    if nav.NAV1Receiver=="ILS" and ils and ils.Available and ils.LocalizerValid then
-    local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28; desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or x.Heading)+intercept)
+    local intercept=clamp(tonumber(ils.Localizer) or 0,-1,1)*28; desired=wrap360((nav.ApproachRunway and nav.ApproachRunway.Heading or heading)+intercept)
     if ils.GlideSlopeValid and type(ils.DesiredAltitude)=="number" and ils.DesiredAltitude==ils.DesiredAltitude and ils.DesiredAltitude>-math.huge and ils.DesiredAltitude<math.huge then nav.CommandAltitude=ils.DesiredAltitude end
-   else desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
-  elseif nav.Mode=="HDG" then desired=wrap360(x.Autopilot.TargetHeading or x.Heading) end
+   else desired=wrap360(x.Autopilot.TargetHeading or heading) end
+  elseif nav.Mode=="HDG" then desired=wrap360(x.Autopilot.TargetHeading or heading) end
   nav.CommandHeading=desired
  else
-  nav.CommandHeading=wrap360(x.Autopilot.TargetHeading or x.Heading); nav.DistanceToWaypoint=0; nav.BearingToWaypoint=nav.CommandHeading; nav.CrossTrackError=0; nav.PathCourse=nil; nav.LNAVInterceptAngle=0; nav.LNAVTrackError=0
+  nav.CommandHeading=wrap360(x.Autopilot.TargetHeading or heading); nav.DistanceToWaypoint=0; nav.BearingToWaypoint=nav.CommandHeading; nav.CrossTrackError=0; nav.PathCourse=nil; nav.LNAVInterceptAngle=0; nav.LNAVTrackError=0
   if #route==0 then nav.RouteComplete=true end
  end
- nav.HeadingError=headingError(nav.CommandHeading,x.Heading)
+ nav.HeadingError=headingError(nav.CommandHeading,heading)
  if nav.Mode=="HDG" or nav.Mode=="LNAV" or nav.Mode=="VOR" then nav.CommandAltitude=nil; nav.CommandVerticalSpeed=nil end
  return nav
 end
