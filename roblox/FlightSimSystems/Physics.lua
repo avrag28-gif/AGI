@@ -1,4 +1,4 @@
--- Boeing 737-800 NG aerodynamic / ground dynamics foundation v3.7
+-- Boeing 737-800 NG aerodynamic / ground dynamics foundation v3.8
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 -- State units: Airspeed=kt, Altitude=ft, VerticalSpeed=ft/min, Position/Velocity=game-space meters.
 local Config=require(script.Parent.Config)
@@ -59,10 +59,12 @@ function Physics:Step(dt)
   local beta=finite(x.Sideslip,finite(x.Beta,0)); local windBeta=clamp(crosswind/math.max(effectiveAirspeed,60)*57.2958,-5,5); local desired=clamp(rud*4.5+turn*.1-rCtrl*.035+windBeta*.12,-10,10)
   beta=clamp(beta+((desired-beta)*2.8-beta*.55-yr*.045)*dt,-12,12)
   local asymmetricYaw=clamp(asym*3.5*qf,-5,5)
+  local betaRoll=-beta*0.65*qf
+  local bankStability=-bank*0.045*qf
   yr=approach(yr,turn*.32+yCtrl-beta*.95-yr*.72-ail*1.4*qf+asymmetricYaw+clamp(crosswind*.015,-.9,.9),5.5,dt)
-  rr=approach(rr,rCtrl-rr*.58*qf+.25*turbR,7,dt)
+  rr=approach(rr,rCtrl+betaRoll+bankStability-rr*.58*qf+.25*turbR,7,dt)
   pr=approach(pr,pCtrl-(aoa-(2.5+clamp(flap*1.5,0,1.5)))*.30-clamp(((speedKts-(125+flap*20))/35)*.65,-3.5,3.5)-pr*.35*qf+.25*turbP,5.5,dt)
-  x.Sideslip=beta; x.Beta=beta; x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1)
+  x.Sideslip=beta; x.Beta=beta; x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1); x.AeroStability.RollRestoringRate=bankStability; x.AeroStability.SideslipRollRate=betaRoll
  end
  x.EngineIntegration.YawRateContribution=ground and 0 or clamp(asym*3.5*qf,-5,5)
  x.EngineIntegration.StallControlFactor=stallControlFactor
