@@ -1,7 +1,12 @@
--- FlightSim flight-control system v1.3
+-- FlightSim flight-control system v1.4
 -- Server-authoritative control-surface scheduling and hydraulic demand reporting.
 -- Hydraulic authority is separated by control group so standby pressure cannot
 -- incorrectly restore every primary flight-control surface.
+--
+-- Important modeling rule: hydraulic pressure limits available surface travel;
+-- airspeed/dynamic pressure limits the aerodynamic moment in Physics.lua. Do
+-- not apply the same low-speed penalty to both layers or control response is
+-- double-attenuated.
 local FlightControls={}; FlightControls.__index=FlightControls
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function approach(v,t,r,dt) local d=t-v; local s=r*dt; if math.abs(d)<=s then return t end return v+(d>0 and s or -s) end
@@ -11,6 +16,8 @@ function FlightControls:Step(dt)
  local x=self.state:Get(); local c=x.Controls or {}; local ap=x.Autopilot or {}; local failures=x.FailureEffects or {}; local h=x.Hydraulic or {}
  local speed=math.max(tonumber(x.Airspeed) or 0,0); local pA=pressure(h.A); local pB=pressure(h.B); local pS=pressure(h.Standby)
  local aHyd=clamp(pA/1800,0,1); local bHyd=clamp(pB/1800,0,1); local sHyd=clamp(pS/1800,0,1)
+ -- Dynamic pressure is modeled in Physics. Keep this factor for telemetry only;
+ -- applying it to surface travel here would double-attenuate low-speed control.
  local dynamicAuthority=clamp(0.22+speed/105,0.22,1.15); local ground=x.GroundContact==true
  x.Surface=x.Surface or {Aileron=0,Elevator=0,Rudder=0,Flap=0,Speedbrake=0,SpoilerLeft=0,SpoilerRight=0}
  local ail=clamp(tonumber(c.Aileron) or 0,-1,1); local ele=clamp(tonumber(c.Elevator) or 0,-1,1)
@@ -18,11 +25,11 @@ function FlightControls:Step(dt)
  ele=clamp(ele+clamp((x.TrimPitch or 0)/10,-0.45,0.45),-1,1)
  local groundAileron=ground and clamp(speed/45,0,1) or 1; local groundElevator=ground and clamp((speed-35)/45,0.12,1) or 1; local groundRudder=ground and clamp((speed-8)/28,0,1) or 1
  local ailFailure=clamp(failures.AileronAuthority or 1,0,1); local eleFailure=clamp(failures.ElevatorAuthority or 1,0,1); local rudFailure=clamp(failures.RudderAuthority or 1,0,1)
- -- Primary flight-control authority uses the best available A/B pressure.
+ -- Primary flight-control hydraulic authority is pressure-only in flight.
  -- Standby is intentionally restricted to rudder authority in this simulation
  -- contract; it must not become a universal substitute for failed primaries.
  local ailHyd=math.max(aHyd,bHyd); local eleHyd=math.max(aHyd,bHyd); local rudHyd=math.max(aHyd,bHyd,sHyd*0.85)
- local ailAuthority=clamp(ailHyd*dynamicAuthority,0,1); local eleAuthority=clamp(eleHyd*dynamicAuthority,0,1); local rudAuthority=clamp(rudHyd*dynamicAuthority,0,1)
+ local ailAuthority=clamp(ailHyd,0,1); local eleAuthority=clamp(eleHyd,0,1); local rudAuthority=clamp(rudHyd,0,1)
  -- Explicit simulation approximation for residual/manual control when both
  -- primary hydraulic systems are unavailable. This is not an AFM/FCOM model.
  local manualReversion=(math.max(aHyd,bHyd)<0.05) and 0.12 or 0
