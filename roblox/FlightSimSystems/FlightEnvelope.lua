@@ -1,4 +1,4 @@
--- Flight envelope helper v1.1
+-- Flight envelope helper v1.2
 -- Simulation approximation: derives load-factor/stall/overspeed indicators from
 -- current mass, atmosphere and configurable aerodynamic tuning. It is not an AFM/FCOM.
 local Profile=require(script.Parent.AircraftProfile)
@@ -46,20 +46,26 @@ function Envelope.Calculate(state)
  local weight=mass*G
  local stallMs=math.sqrt(2*weight/(rho*wingArea*math.max(clMax,0.5)))
  local stallKt=stallMs/KTS_TO_MS
- local loadFactor=math.max(finite(state.LoadFactor,1),0)
- local acceleratedStallKt=stallKt*math.sqrt(math.max(loadFactor,0.01))
+ local loadFactor=math.max(finite(state.LoadFactor,1),0.01)
+ local acceleratedStallKt=stallKt*math.sqrt(loadFactor)
+ -- The maneuvering stall threshold is only above the 1-g threshold when
+ -- positive load factor exceeds 1. This keeps the warning useful in turns
+ -- without allowing low/negative load-factor values to create an artificial
+ -- near-zero stall threshold.
+ local stallThresholdKt=math.max(stallKt,acceleratedStallKt)
  local airspeed=math.max(finite(state.Airspeed,0),0)
  local vmo=finite(Profile.Limits.VMOKcas,340)
  local mach=math.max(finite(state.Mach,0),0)
  local mmo=finite(Profile.Limits.MMO,0.82)
  local airborne=state.GroundContact~=true
- local stallWarning=airborne and airspeed<=stallKt*1.10
- local stallActive=airborne and airspeed<=stallKt
+ local stallWarning=airborne and airspeed<=stallThresholdKt*1.10
+ local stallActive=airborne and airspeed<=stallThresholdKt
  return {
   StallSpeedKt=stallKt,
   AcceleratedStallSpeedKt=acceleratedStallKt,
-  StallMarginKt=airspeed-stallKt,
-  StallMarginPercent=(airspeed/math.max(stallKt,1)-1)*100,
+  StallThresholdKt=stallThresholdKt,
+  StallMarginKt=airspeed-stallThresholdKt,
+  StallMarginPercent=(airspeed/math.max(stallThresholdKt,1)-1)*100,
   StallWarning=stallWarning,
   StallActive=stallActive,
   Overspeed=airspeed>vmo or mach>mmo,
