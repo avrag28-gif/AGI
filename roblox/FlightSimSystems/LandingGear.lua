@@ -1,12 +1,16 @@
--- FlightSim landing gear system v0.5
+-- FlightSim landing gear system v0.6
 -- Simulation approximation of hydraulic gear actuation, lock state and demand reporting.
 -- Gear handle is represented by Gear.Nose/Left/Right; GearPosition is the physical state.
 local LandingGear={}; LandingGear.__index=LandingGear
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
+local function pressure(system)
+	if type(system)=="table" then return math.max(tonumber(system.Pressure) or 0,0) end
+	return math.max(tonumber(system) or 0,0)
+end
 function LandingGear.new(state) return setmetatable({state=state},LandingGear) end
 function LandingGear:Step(dt)
  local x=self.state:Get(); local gear=x.Gear or {}; local h=x.Hydraulic or {}; dt=math.max(tonumber(dt) or 0,0)
- local pressureA=math.max(tonumber(h.A) or 0,0); local pressureB=math.max(tonumber(h.B) or 0,0); local hydraulic=math.max(pressureA,pressureB); local powered=hydraulic>=1000
+ local pressureA=pressure(h.A); local pressureB=pressure(h.B); local hydraulic=math.max(pressureA,pressureB); local powered=hydraulic>=1000
  x.GearPosition=x.GearPosition or {Nose=0,Left=0,Right=0}
  local rate=powered and 0.55 or 0
  local function move(k,target)
