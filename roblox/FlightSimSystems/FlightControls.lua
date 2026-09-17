@@ -33,7 +33,13 @@ function FlightControls:Step(dt)
  ele=clamp(ele+clamp((x.TrimPitch or 0)/10,-0.45,0.45),-1,1)
  local groundAileron=ground and clamp(speed/45,0,1) or 1; local groundElevator=ground and clamp((speed-35)/45,0.12,1) or 1; local groundRudder=ground and clamp((speed-8)/28,0,1) or 1
  local ailFailure=clamp(failures.AileronAuthority or 1,0,1); local eleFailure=clamp(failures.ElevatorAuthority or 1,0,1); local rudFailure=clamp(failures.RudderAuthority or 1,0,1)
- local ailHyd=math.max(aHyd,bHyd); local eleHyd=math.max(aHyd,bHyd); local rudHyd=math.max(aHyd,bHyd,sHyd*0.85)
+ local primaryHyd=math.max(aHyd,bHyd)
+ local ailHyd=primaryHyd; local eleHyd=primaryHyd
+ -- Standby hydraulic pressure is an alternate source for rudder control, not a
+ -- continuous authority boost. Do not let a charged standby system mask healthy
+ -- primary pressure; use it only after both primary control sources are effectively lost.
+ local rudHyd=primaryHyd
+ if primaryHyd<0.05 then rudHyd=math.max(rudHyd,sHyd*0.85) end
  local manualReversion=(math.max(aHyd,bHyd)<0.05) and 0.12 or 0
  ailHyd=math.max(ailHyd,manualReversion); eleHyd=math.max(eleHyd,manualReversion)
  local rudderCommand=clamp(tonumber(c.Rudder) or 0,-1,1)
