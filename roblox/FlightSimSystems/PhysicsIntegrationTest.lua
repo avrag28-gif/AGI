@@ -1,4 +1,4 @@
--- Physics force-integration regression tests v0.5
+-- Physics force-integration regression tests v0.6
 local State=require(script.Parent.State)
 local Physics=require(script.Parent.Physics)
 local FlightControls=require(script.Parent.FlightControls)
@@ -15,6 +15,8 @@ local function baseState()
  s.Engines[2].Running=true
  s.Engines[1].Thrust=100000
  s.Engines[2].Thrust=100000
+ s.Hydraulic.A.Pressure=3000
+ s.Hydraulic.B.Pressure=3000
  return s
 end
 local function run()
@@ -86,8 +88,6 @@ local function run()
  local trimState=baseState()
  trimState.Controls.Elevator=0
  trimState.TrimPitch=5
- trimState.Hydraulic.A.Pressure=3000
- trimState.Hydraulic.B.Pressure=3000
  FlightControls.new(trimState):Step(0.1)
  check(trimState.Surface.Elevator>0.35,"pitch trim did not produce the expected bounded elevator contribution")
  local neutralTrim=baseState()
@@ -95,6 +95,35 @@ local function run()
  neutralTrim.TrimPitch=0
  FlightControls.new(neutralTrim):Step(0.1)
  check(math.abs(trimState.Surface.Elevator)>math.abs(neutralTrim.Surface.Elevator),"trim did not change elevator surface relative to neutral trim")
+
+ -- Loss of both primary hydraulic systems must reduce actual surface travel
+ -- before Physics consumes the surface, while demand remains present.
+ local hydraulicNormal=baseState()
+ hydraulicNormal.Controls.Aileron=1
+ hydraulicNormal.Controls.Elevator=1
+ FlightControls.new(hydraulicNormal):Step(0.1)
+ local normalAileron=math.abs(hydraulicNormal.Surface.Aileron)
+ local normalElevator=math.abs(hydraulicNormal.Surface.Elevator)
+ local hydraulicDegraded=baseState()
+ hydraulicDegraded.Controls.Aileron=1
+ hydraulicDegraded.Controls.Elevator=1
+ hydraulicDegraded.Hydraulic.A.Pressure=0
+ hydraulicDegraded.Hydraulic.B.Pressure=0
+ FlightControls.new(hydraulicDegraded):Step(0.1)
+ check(hydraulicDegraded.HydraulicDemand.FlightControls>0,"hydraulic failure must not erase flight-control demand")
+ check(math.abs(hydraulicDegraded.Surface.Aileron)<normalAileron,"hydraulic degradation must reduce aileron surface authority")
+ check(math.abs(hydraulicDegraded.Surface.Elevator)<normalElevator,"hydraulic degradation must reduce elevator surface authority")
+ local normalPhysics=baseState()
+ normalPhysics.Controls.Aileron=1
+ FlightControls.new(normalPhysics):Step(0.1)
+ Physics.new(normalPhysics):Step(1/60)
+ local degradedPhysics=baseState()
+ degradedPhysics.Controls.Aileron=1
+ degradedPhysics.Hydraulic.A.Pressure=0
+ degradedPhysics.Hydraulic.B.Pressure=0
+ FlightControls.new(degradedPhysics):Step(0.1)
+ Physics.new(degradedPhysics):Step(1/60)
+ check(math.abs(degradedPhysics.RollRate)<math.abs(normalPhysics.RollRate),"hydraulic degradation must reduce roll response in Physics")
 
  -- Yaw is an attitude angle, while YawRate is angular rate. They must not
  -- share the same state value.
