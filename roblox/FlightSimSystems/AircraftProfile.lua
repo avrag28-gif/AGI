@@ -1,4 +1,4 @@
--- Boeing 737-800 NG baseline aircraft profile v1.0
+-- Boeing 737-800 NG baseline aircraft profile v1.1
 -- Baseline is explicitly the 737-800 with CFM56-7B26-series engines.
 -- This profile separates aircraft facts/limits from simulator tuning.
 -- Sources used for this baseline: FAA TCDS A16WE; Boeing 737NG airport planning
@@ -6,7 +6,6 @@
 -- This is a simulation configuration, not an FAA-approved AFM/FCOM replacement.
 
 local LB_TO_N=4.4482216152605
-local FT_TO_M=0.3048
 
 return {
 	Aircraft={
@@ -36,6 +35,17 @@ return {
 		VMOKcas=340,
 		MMO=0.82,
 		MaxAltitudeFt=41000,
+	},
+
+	Weights={
+		-- Boeing 737-800 airport-planning baseline values for the selected profile.
+		OperatingEmptyMassKg=41413,
+		MaxZeroFuelMassKg=62732,
+		MaxLandingMassKg=66361,
+		MaxTakeoffMassKg=79016,
+		MaxTaxiMassKg=79242,
+		-- CG is intentionally a simulator baseline until a full loading station model exists.
+		ReferenceCGPercentMAC=25,
 	},
 
 	Hydraulics={
