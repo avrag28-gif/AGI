@@ -30,7 +30,7 @@ function Physics:Step(dt)
  local throttle=(clamp(finite((x.Throttle or {})[1],0),0,1)+clamp(finite((x.Throttle or {})[2],0),0,1))*0.5
  local lt=math.max(finite(e1.Thrust,0),0); local rt=math.max(finite(e2.Thrust,0),0); local thrust=lt+rt; local ground=x.GroundContact==true; local flap=clamp(finite(s.Flap,0),0,1); local gear=x.GearPosition or {}; local gearExposed=clamp((finite(gear.Nose,0)+finite(gear.Left,0)+finite(gear.Right,0))/3,0,1)
  local brakes=x.Brakes or {}; local brake=clamp(finite(brakes.BrakePressure,0),0,1); local lp=clamp(finite(brakes.LeftPressure,brake),0,1); local rp=clamp(finite(brakes.RightPressure,brake),0,1); local reverse=ground and clamp(finite(x.ReverseThrust,0),0,1) or 0
- local asym=(rt-lt)/math.max(thrust,1); x.EngineIntegration.TotalThrust=thrust; x.EngineIntegration.LeftThrust=lt; x.EngineIntegration.RightThrust=rt; x.EngineIntegration.ThrustAsymmetry=clamp(asym,-1,1); x.EngineIntegration.EngineOut=(e1.Running==true and e2.Running~=true) or (e2.Running==true and e1.Running~=true)
+ local asym=(rt-lt)/math.max(thrust,1); local engineYawMoment=(rt-lt)*(Config.EngineLateralArm or 0); local engineYawMomentGain=math.max(finite(Config.EngineYawMomentGain,0.000055),0); x.EngineIntegration.TotalThrust=thrust; x.EngineIntegration.LeftThrust=lt; x.EngineIntegration.RightThrust=rt; x.EngineIntegration.ThrustAsymmetry=clamp(asym,-1,1); x.EngineIntegration.EngineYawMoment=engineYawMoment; x.EngineIntegration.EngineOut=(e1.Running==true and e2.Running~=true) or (e2.Running==true and e1.Running~=true)
  local wingArea=125; local pitchAngle=finite(x.Pitch,0)
  local controlLoad=clamp(math.abs(finite(s.Elevator,0))+math.abs(finite(s.Aileron,0))*0.35+math.abs(finite(s.Rudder,0))*0.15,0,1.5)
  -- Trim is converted into the authoritative elevator surface in FlightControls.
@@ -78,7 +78,7 @@ function Physics:Step(dt)
   local turn=0; if speedMS>15 then turn=math.deg(G*math.tan(math.rad(bank))/speedMS) end; turn=clamp(turn,-12,12)
   local beta=finite(x.Sideslip,finite(x.Beta,0)); local windBeta=clamp(crosswind/math.max(effectiveAirspeed,60)*57.2958,-5,5); local desired=clamp(rud*4.5+turn*.1-rCtrl*.035+windBeta*.12,-10,10)
   beta=clamp(beta+((desired-beta)*2.8-beta*.55-yr*.045)*dt,-12,12)
-  local asymmetricYaw=clamp(asym*3.5*qf,-5,5)
+  -- Engine-out yaw is driven by the actual thrust difference and the configured engine arm.\n  -- Do not normalize it by total thrust for the moment itself: an engine at idle produces\n  -- little asymmetric yaw, while a high-thrust failure produces a larger moment.\n  local asymmetricYaw=clamp(engineYawMoment*engineYawMomentGain*qf,-5,5)
   local betaRoll=-beta*0.65*qf
   local bankStability=-bank*0.045*qf
   yr=approach(yr,turn*.32+yCtrl-beta*.95-yr*.72-ail*1.4*qf+asymmetricYaw+clamp(crosswind*.015,-.9,.9),5.5,dt)
@@ -86,7 +86,7 @@ function Physics:Step(dt)
   pr=approach(pr,pCtrl-(aoa-(2.5+clamp(flap*1.5,0,1.5)))*.30-clamp(((speedKts-(125+flap*20))/35)*.65,-3.5,3.5)-pr*.35*qf+.25*turbP,5.5,dt)
   x.Sideslip=beta; x.Beta=beta; x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1); x.AeroStability.RollRestoringRate=bankStability; x.AeroStability.SideslipRollRate=betaRoll
  end
- x.EngineIntegration.YawRateContribution=ground and 0 or clamp(asym*3.5*qf,-5,5)
+ x.EngineIntegration.YawRateContribution=ground and 0 or clamp(engineYawMoment*engineYawMomentGain*qf,-5,5)
  x.EngineIntegration.StallControlFactor=stallControlFactor
  x.AeroStability.StallControlFactor=stallControlFactor
  x.PitchRate=pr; x.RollRate=rr; x.YawRate=yr
