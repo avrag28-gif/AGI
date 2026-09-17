@@ -1,7 +1,8 @@
--- FlightSim aerodynamic / ground dynamics foundation v2.8
+-- FlightSim aerodynamic / ground dynamics foundation v2.9
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 -- State units: Airspeed=kt, Altitude=ft, VerticalSpeed=ft/min, Position/Velocity=game-space meters.
 local Config=require(script.Parent.Config)
+local WeightBalance=require(script.Parent.WeightBalance)
 local Physics={}; Physics.__index=Physics
 local FT_TO_M=0.3048
 local FPM_TO_MS=FT_TO_M/60
@@ -15,7 +16,8 @@ function Physics:Step(dt)
  local x=self.state:Get(); local s=x.Surface or {}; local e1=x.Engines[1] or {}; local e2=x.Engines[2] or {}; dt=clamp(finite(dt,1/60),0,0.25)
  local speedKts=math.max(finite(x.Airspeed,0),0); local speedMS=speedKts*0.514444; local weather=x.WeatherEffects or {}; local effectiveAirspeed=clamp(finite(weather.EffectiveAirspeed,speedKts),0,500); local aeroSpeedMS=effectiveAirspeed*0.514444
  local icingDrag=clamp(finite(weather.IcingDragFactor,1),1,1.12); local icingLift=clamp(finite(weather.IcingLiftFactor,1),0.88,1); local crosswind=clamp(finite(weather.CrosswindKts,0),-80,80); local turbP=clamp(finite(weather.TurbulencePitch,0),-1.5,1.5); local turbR=clamp(finite(weather.TurbulenceRoll,0),-1.5,1.5)
- local fuel=x.Fuel or {}; local mass=90000+math.max(0,finite(fuel.Total,0))*0.8; local weight=mass*9.80665; x.Mass=mass; x.Weight=weight; local throttle=(clamp(finite(x.Throttle[1],0),0,1)+clamp(finite(x.Throttle[2],0),0,1))*0.5
+ local weightData=WeightBalance.Step(x); local mass=math.max(weightData.GrossMassKg,1); local weight=mass*9.80665
+ local throttle=(clamp(finite(x.Throttle[1],0),0,1)+clamp(finite(x.Throttle[2],0),0,1))*0.5
  local lt=math.max(0,finite(e1.Thrust,0)); local rt=math.max(0,finite(e2.Thrust,0)); local thrust=lt+rt; local ground=x.GroundContact==true; local flap=clamp(finite(s.Flap,0),0,1); local gear=x.GearPosition or {}; local gearExposed=clamp((finite(gear.Nose,0)+finite(gear.Left,0)+finite(gear.Right,0))/3,0,1)
  local brakes=x.Brakes or {}; local brake=clamp(finite(brakes.BrakePressure,0),0,1); local lp=clamp(finite(brakes.LeftPressure,brake),0,1); local rp=clamp(finite(brakes.RightPressure,brake),0,1); local reverse=ground and clamp(finite(x.ReverseThrust,0),0,1) or 0
  local asym=(rt-lt)/math.max(thrust,1); local yawMoment=(rt-lt)*Config.EngineLateralArm*Config.EngineYawMomentGain; x.EngineIntegration.TotalThrust=thrust; x.EngineIntegration.LeftThrust=lt; x.EngineIntegration.RightThrust=rt; x.EngineIntegration.ThrustAsymmetry=clamp(asym,-1,1); x.EngineIntegration.EngineOut=(thrust>0 and (lt<thrust*Config.EngineOutThreshold or rt<thrust*Config.EngineOutThreshold)); x.EngineIntegration.YawMoment=yawMoment
