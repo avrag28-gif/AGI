@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v1.6
+-- FlightSim VNAV vertical + speed guidance v1.7
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local FT_PER_M=3.28084
@@ -35,8 +35,8 @@ end
 function VNAV.new(state) return setmetatable({state=state,lastWaypoint=nil},VNAV) end
 function VNAV:Step(dt)
  local x=self.state:Get(); local nav=x.Navigation or {}; local route=nav.Route or {}; local ap=x.Autopilot or {}; local fmc=x.FMC or {}
- x.VNAV=x.VNAV or {Mode="OFF",Phase="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0,DescentPathAngle=0,CommandVerticalSpeed=nil,ConstraintType=nil,ConstraintAltitude=nil,ConstraintSatisfied=true,TargetSpeed=nil,SpeedConstraintType=nil,SpeedConstraintSatisfied=true,TopOfDescentDistance=nil}
- local v=x.VNAV
+ x.VNAV=x.VNAV or {Mode="OFF",Phase="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0,DescentPathAngle=0,CommandVerticalSpeed=nil,ConstraintType=nil,ConstraintAltitude=nil,ConstraintSatisfied=true,TargetSpeed=nil,SpeedConstraintType=nil,SpeedConstraintSatisfied=true,TopOfDescentDistance=nil,GuidanceLimited=false,LimitReason=nil}
+ local v=x.VNAV; v.GuidanceLimited=false; v.LimitReason=nil
  if v.Mode~="VNAV" then v.Mode="OFF"; v.Phase="OFF"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true; v.TopOfDescentDistance=nil; self.lastWaypoint=nil; return true end
  v.Mode="VNAV"
  local index=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); local wp=route[index]; self.lastWaypoint=index
@@ -50,20 +50,12 @@ function VNAV:Step(dt)
  local distanceToWp=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distanceToWp*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
  local tod=nil
  if target and altitude>target then
-  local requiredM=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M)
-  tod=math.max(0,distanceToWp-requiredM)
-  if tod>0 and index<#route then
-   local downstream=downstreamTOD(route,index,altitude)
-   if downstream~=nil then tod=math.max(tod,downstream) end
-  end
- elseif target and altitude<=target then
-  tod=downstreamTOD(route,index,altitude)
- end
+  local requiredM=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M); tod=math.max(0,distanceToWp-requiredM)
+  if tod>0 and index<#route then local downstream=downstreamTOD(route,index,altitude); if downstream~=nil then tod=math.max(tod,downstream) end end
+ elseif target and altitude<=target then tod=downstreamTOD(route,index,altitude) end
  if target then
   v.TopOfDescentDistance=tod
-  if v.PathError>tolerance then v.Phase="CLIMB"
-  elseif v.PathError<-tolerance then v.Phase=(tod==nil or tod<=0) and "DESCENT" or "CRUISE"
-  else v.Phase="ALTITUDE_CAPTURE" end
+  if v.PathError>tolerance then v.Phase="CLIMB" elseif v.PathError<-tolerance then v.Phase=(tod==nil or tod<=0) and "DESCENT" or "CRUISE" else v.Phase="ALTITUDE_CAPTURE" end
  else v.Phase="CRUISE"; v.TopOfDescentDistance=nil end
  local pathAngle=0
  if target then
@@ -74,6 +66,9 @@ function VNAV:Step(dt)
  if distanceToWp<1000 then desiredVS=clamp(desiredVS,-800,800) elseif distanceToWp<5000 then desiredVS=clamp(desiredVS,-1800,1800) else desiredVS=clamp(desiredVS,-2500,2500) end
  if v.Phase=="CRUISE" or math.abs(v.PathError)<75 then desiredVS=clamp(v.PathError*0.08,-800,800) end
  if constraint=="ABOVE" and altitude<target then desiredVS=math.max(desiredVS,0) elseif constraint=="BELOW" and altitude>target then desiredVS=math.min(desiredVS,0) end
+ local envelope=x.FlightEnvelope or {}
+ if finite(envelope.StallMarginKt) and envelope.StallMarginKt<0 then desiredVS=math.max(desiredVS,-500); v.GuidanceLimited=true; v.LimitReason="STALL_MARGIN" elseif envelope.Overspeed==true then desiredVS=math.min(desiredVS,500); v.GuidanceLimited=true; v.LimitReason="OVERSPEED" end
+ desiredVS=clamp(desiredVS,-2500,2500)
  v.VerticalSpeed=desiredVS; v.CommandVerticalSpeed=desiredVS; v.DescentPathAngle=math.deg(pathAngle); nav.CommandAltitude=target; nav.CommandVerticalSpeed=desiredVS
  local rawSpeed=wp and tonumber(wp.Speed) or nil; local speedConstraint=wp and string.upper(tostring(wp.SpeedConstraint or "AT")) or "AT"
  if finite(rawSpeed) then
