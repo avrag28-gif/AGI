@@ -1,4 +1,4 @@
--- Boeing 737-800 NG aerodynamic / ground dynamics foundation v3.8
+-- Boeing 737-800 NG aerodynamic / ground dynamics foundation v3.9
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 -- State units: Airspeed=kt, Altitude=ft, VerticalSpeed=ft/min, Position/Velocity=game-space meters.
 local Config=require(script.Parent.Config)
@@ -48,7 +48,15 @@ function Physics:Step(dt)
  local accel=longitudinal/math.max(mass,1); x.Airspeed=clamp(speedKts+accel*1.94384*dt,0,Config.MaxAirspeed); x.DynamicPressure=q; x.Lift=lift; x.Drag=drag; x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor; x.AoA=aoa
  local envelope=FlightEnvelope.Step(x)
  x.StallWarning=envelope.StallWarning or math.abs(aoa)>=13 and speedKts>45; x.StallActive=envelope.StallActive or stall>=1; x.OverspeedWarning=envelope.Overspeed
+ -- Control effectiveness must follow the same envelope that drives the stall
+ -- warning. Previously only the AoA-based stall coefficient reduced control
+ -- response, so a low-speed envelope stall could still leave near-normal
+ -- aileron/elevator/yaw authority. Keep the existing AoA reduction, then
+ -- apply bounded envelope reductions on top without changing surface state.
  local stallControlFactor=1-0.70*stall
+ if envelope.StallWarning then stallControlFactor=math.min(stallControlFactor,0.65) end
+ if envelope.StallActive then stallControlFactor=math.min(stallControlFactor,0.30) end
+ stallControlFactor=clamp(stallControlFactor,0.15,1)
  local qf=clamp(effectiveAirspeed/140,0.12,1.2)*stallControlFactor
  local ail=clamp(finite(s.Aileron,0),-1,1); local ele=clamp(finite(s.Elevator,0),-1,1); local rud=clamp(finite(s.Rudder,0),-1,1)
  local pCtrl=ele*9*qf; local rCtrl=ail*28*qf; local yCtrl=rud*9*qf
@@ -68,6 +76,7 @@ function Physics:Step(dt)
  end
  x.EngineIntegration.YawRateContribution=ground and 0 or clamp(asym*3.5*qf,-5,5)
  x.EngineIntegration.StallControlFactor=stallControlFactor
+ x.AeroStability.StallControlFactor=stallControlFactor
  x.PitchRate=pr; x.RollRate=rr; x.YawRate=yr
  local yaw=finite(x.Yaw,finite(x.Heading,0)); x.Yaw=wrap(yaw+yr*dt)
  x.Pitch=clamp(pitchAngle+pr*dt,-35,35); x.Roll=clamp(bank+rr*dt,-75,75); x.Heading=wrap(finite(x.Heading,0)+(ground and finite((x.GroundSteering or {}).YawRate,0) or yr)*dt)
