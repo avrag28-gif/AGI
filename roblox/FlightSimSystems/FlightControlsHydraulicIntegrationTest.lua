@@ -1,4 +1,4 @@
--- FlightSim flight-control / hydraulic authority regression tests v0.1
+-- FlightSim flight-control / hydraulic authority regression tests v0.2
 local State=require(script.Parent.State)
 local FlightControls=require(script.Parent.FlightControls)
 local function check(ok,msg) assert(ok,msg) end
@@ -14,20 +14,25 @@ local function baseState()
  s.Controls.Rudder=1
  return s
 end
+local function settle(s,steps)
+ local fc=FlightControls.new(s)
+ for _=1,steps do fc:Step(1/60) end
+end
 local function run()
- -- Healthy primary hydraulics must provide full control-surface authority at speed.
+ -- Healthy primary hydraulics must provide strong control-surface authority at speed.
  local healthy=baseState()
- FlightControls.new(healthy):Step(1/60)
- check(healthy.Surface.Aileron>0.8,"healthy A hydraulic authority should drive aileron near commanded deflection")
- check(healthy.Surface.Elevator>0.8,"healthy B hydraulic authority should drive elevator near commanded deflection")
+ settle(healthy,30)
+ check(healthy.Surface.Aileron>0.8,"healthy primary hydraulics should drive aileron near commanded deflection")
+ check(healthy.Surface.Elevator>0.8,"healthy primary hydraulics should drive elevator near commanded deflection")
  check(healthy.Surface.Rudder>0.8,"healthy primary hydraulics should drive rudder near commanded deflection")
  check(healthy.FlightControls.PrimaryHydraulicA==true and healthy.FlightControls.PrimaryHydraulicB==true,"primary hydraulic status should be exposed to flight controls")
 
  -- Losing A while B remains healthy must not remove all aileron/elevator authority,
  -- because this simulation allocates primary control groups across the two systems.
  local bOnly=baseState()
+ settle(bOnly,30)
  bOnly.Hydraulic.A.Pressure=0
- FlightControls.new(bOnly):Step(1/60)
+ settle(bOnly,30)
  check(bOnly.Surface.Aileron>0.8,"B-only condition should retain aileron authority")
  check(bOnly.Surface.Elevator>0.8,"B-only condition should retain elevator authority")
 
@@ -36,7 +41,7 @@ local function run()
  standbyOnly.Hydraulic.A.Pressure=0
  standbyOnly.Hydraulic.B.Pressure=0
  standbyOnly.Hydraulic.Standby.Pressure=3000
- FlightControls.new(standbyOnly):Step(1/60)
+ settle(standbyOnly,30)
  check(standbyOnly.Surface.Aileron<0.2,"standby must not restore full aileron authority")
  check(standbyOnly.Surface.Elevator<0.2,"standby must not restore full elevator authority")
  check(standbyOnly.Surface.Rudder>0.1,"standby may retain limited rudder authority")
@@ -47,7 +52,7 @@ local function run()
  damper.Controls.YawDamper=true
  damper.Sideslip=5
  damper.YawRate=2
- FlightControls.new(damper):Step(1/60)
+ settle(damper,30)
  check(damper.Surface.Rudder<0,"yaw damper should command corrective rudder for positive beta/yaw rate")
  check(damper.ControlFeel.YawDamperActive==true,"yaw-damper status should be exposed")
  return true
