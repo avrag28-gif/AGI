@@ -1,4 +1,4 @@
--- Physics force-integration regression tests v0.6
+-- Physics force-integration regression tests v0.7
 local State=require(script.Parent.State)
 local Physics=require(script.Parent.Physics)
 local FlightControls=require(script.Parent.FlightControls)
@@ -66,6 +66,23 @@ local function run()
  Physics.new(stallState):Step(1/60)
  check(stallState.EngineIntegration.StallControlFactor<normal.EngineIntegration.StallControlFactor,"stall must reduce aerodynamic control effectiveness")
  check(math.abs(stallState.RollRate)<normalRoll,"stall must reduce aileron roll response")
+
+ -- Low-speed envelope stall must also reduce control response even when the
+ -- simplified AoA coefficient itself has not reached its post-stall region.
+ local lowSpeedNormal=baseState()
+ lowSpeedNormal.Airspeed=200
+ lowSpeedNormal.WeatherEffects.EffectiveAirspeed=200
+ lowSpeedNormal.Surface.Aileron=1
+ Physics.new(lowSpeedNormal):Step(1/60)
+ local lowSpeedRoll=math.abs(lowSpeedNormal.RollRate)
+ local lowSpeedStall=baseState()
+ lowSpeedStall.Airspeed=45
+ lowSpeedStall.WeatherEffects.EffectiveAirspeed=45
+ lowSpeedStall.Surface.Aileron=1
+ Physics.new(lowSpeedStall):Step(1/60)
+ check(lowSpeedStall.StallActive==true,"low-speed envelope must enter stall-active state")
+ check(lowSpeedStall.EngineIntegration.StallControlFactor<=0.30,"stall-active envelope must clamp control effectiveness")
+ check(math.abs(lowSpeedStall.RollRate)<lowSpeedRoll,"low-speed stall must reduce roll response")
 
  -- A positive bank with no roll input must generate a restoring roll-rate
  -- command instead of leaving the aircraft indefinitely at a fixed bank.
