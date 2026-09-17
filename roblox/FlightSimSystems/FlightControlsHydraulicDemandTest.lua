@@ -1,7 +1,8 @@
--- FlightSim hydraulic/control-authority regression tests v1.4
+-- FlightSim hydraulic/control-authority regression tests v1.5
 local State=require(script.Parent.State)
 local FlightControls=require(script.Parent.FlightControls)
 local Hydraulic=require(script.Parent.Hydraulic)
+local Failures=require(script.Parent.Failures)
 local Config=require(script.Parent.Config)
 local Test={}
 local function check(condition,message) if not condition then error(message,2) end end
@@ -19,13 +20,20 @@ function Test.Run()
  check(math.abs(standby.Surface.Rudder)>0.20,"standby hydraulic rudder authority was not applied"); check(math.abs(standby.Surface.Aileron)<=0.13,"standby hydraulic pressure incorrectly restored aileron authority"); check(math.abs(standby.Surface.Elevator)<=0.13,"standby hydraulic pressure incorrectly restored elevator authority")
  local airborneDamper=newState(); airborneDamper.Controls.YawDamper=true; airborneDamper.Sideslip=6; FlightControls.new(airborneDamper):Step(0.1); check(airborneDamper.ControlFeel.YawDamperActive==true,"airborne yaw damper was not marked active"); check(airborneDamper.Surface.Rudder<0,"airborne yaw damper did not provide correcting rudder input")
  local groundDamper=newState(); groundDamper.GroundContact=true; groundDamper.Airspeed=25; groundDamper.Controls.YawDamper=true; groundDamper.Sideslip=6; groundDamper.YawRate=5; FlightControls.new(groundDamper):Step(0.1); check(groundDamper.ControlFeel.YawDamperActive==false,"yaw damper remained active in the ground-control path"); check(math.abs(groundDamper.Surface.Rudder)<0.01,"ground yaw damper incorrectly injected rudder input")
- -- Standby pump must not be driven by aileron/elevator demand that the standby
- -- control path cannot use. Only the explicit supported standby demand may run it.
  local hydraulicState=newState(); hydraulicState.Engines[1].Running=true; hydraulicState.Engines[2].Running=true; hydraulicState.Electrical.Bus1=true; hydraulicState.Electrical.Bus2=true; hydraulicState.Hydraulic.A.Pressure=0; hydraulicState.Hydraulic.B.Pressure=0; hydraulicState.Hydraulic.Standby.Pressure=0; hydraulicState.HydraulicDemand.FlightControls=1; hydraulicState.HydraulicDemand.FlightControlsA=1; hydraulicState.HydraulicDemand.FlightControlsB=1; hydraulicState.HydraulicDemand.FlightControlsStandby=0; Hydraulic.new(hydraulicState,Config):Step(0.1)
  check(hydraulicState.HydraulicDemand.Standby==0,"standby hydraulic demand was incorrectly derived from primary-only flight-control load")
  check(hydraulicState.Hydraulic.Standby.PumpDemand==0,"standby pump was driven by unsupported aileron/elevator demand")
  hydraulicState.HydraulicDemand.FlightControlsStandby=1; Hydraulic.new(hydraulicState,Config):Step(0.1)
  check(hydraulicState.Hydraulic.Standby.PumpDemand>0,"supported standby control demand did not drive standby pump")
+ -- Failure manager publishes the hydraulic failure before FlightControls in the
+ -- runtime. FlightControls must not wait for the next Hydraulic step to react.
+ local immediateFailure=newState(); immediateFailure.Controls.Aileron=1; immediateFailure.Controls.Elevator=1
+ Failures.new(immediateFailure):SetHydraulic("A",true); Failures.new(immediateFailure):SetHydraulic("B",true); Failures.new(immediateFailure):Step(0.1); FlightControls.new(immediateFailure):Step(0.1)
+ check(immediateFailure.ControlFeel.HydraulicA==0,"declared hydraulic-A failure was not applied immediately")
+ check(immediateFailure.ControlFeel.HydraulicB==0,"declared hydraulic-B failure was not applied immediately")
+ check(math.abs(immediateFailure.Surface.Aileron)<=0.13,"declared dual hydraulic failure left excess aileron authority for one tick")
+ check(math.abs(immediateFailure.Surface.Elevator)<=0.13,"declared dual hydraulic failure left excess elevator authority for one tick")
+ check(immediateFailure.HydraulicDemand.FlightControls>0,"declared hydraulic failure incorrectly erased control demand")
  return true
 end
 return Test
