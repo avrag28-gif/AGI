@@ -1,4 +1,4 @@
--- FlightSim autopilot / VOR / ILS / VNAV controller v1.5
+-- FlightSim autopilot / VOR / ILS / VNAV controller v1.6
 -- Closed-loop game-simulation controller. Values are tuning parameters, not certified aircraft data.
 local Autopilot={}; Autopilot.__index=Autopilot
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -6,18 +6,36 @@ local function err(t,c) return (t-c+540)%360-180 end
 local function slew(v,target,rate,dt) local d=target-v; local step=rate*math.max(0,dt); if math.abs(d)<=step then return target end return v+(d>0 and step or -step) end
 local function finite(v) return type(v)=="number" and v==v and v~=math.huge and v~=-math.huge end
 local function firstFinite(...) for i=1,select("#",...) do local v=select(i,...); if finite(v) then return v end end end
+local function controlAuthority(state)
+ local feel=state.ControlFeel or {}
+ local a=tonumber(feel.AileronAuthority) or 0
+ local e=tonumber(feel.ElevatorAuthority) or 0
+ local r=tonumber(feel.RudderAuthority) or 0
+ local hydraulic=tonumber(feel.HydraulicAuthority) or 0
+ return clamp(math.min(a,e,r),0,1),clamp(hydraulic/1800,0,1)
+end
 function Autopilot.new(state) return setmetatable({state=state,bankCommand=0,pitchCommand=0},Autopilot) end
 function Autopilot:Step(dt)
  local x=self.state:Get(); local ap=x.Autopilot or {}; local nav=x.Navigation or {}; local v=x.VNAV or {}; local ils=nav.ILS; local vor=nav.VOR
  local altitude=finite(x.Altitude) and x.Altitude or 0; local heading=finite(x.Heading) and x.Heading%360 or 0; local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
  ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false; ap.SpeedError=0; ap.SpeedCommand=nil
+ local envelope=x.FlightEnvelope or {}; local authority,hydraulicAuthority=controlAuthority(x)
+ ap.ControlAuthority=authority; ap.HydraulicAuthority=hydraulicAuthority
+ -- A stall is a physical-envelope condition, not an altitude-hold command.
+ -- Disconnect the simulated AFDS instead of allowing it to fight the stall.
+ if ap.Enabled and (x.StallActive==true or envelope.StallActive==true) and not ap.GoAround then
+  ap.Enabled=false; ap.DisconnectReason="STALL_ACTIVE"; ap.Mode="DISENGAGED"
+  self.bankCommand=0; self.pitchCommand=0
+  ap.CommandBank=0; ap.CommandPitch=0; ap.CommandAileron=0; ap.CommandElevator=0
+  return true
+ end
  if ap.GoAround then
   nav.Mode="HDG"; v.Mode="OFF"; if ils then ils.LocalizerCaptured=false; ils.GlideSlopeCaptured=false end
   ap.ILSLocalizerCaptured=false; ap.ILSGlideSlopeCaptured=false; ap.Mode="GO_AROUND"
   local targetH=finite(ap.GoAroundHeading) and ap.GoAroundHeading%360 or (heading+180)%360; local baseAltitude=finite(ap.GoAroundAltitude) and ap.GoAroundAltitude or altitude; local targetA=math.max(baseAltitude,altitude+1000)
   ap.TargetHeading=targetH; ap.TargetAltitude=targetA
   local he=err(targetH,heading); local ae=targetA-altitude
-  self.bankCommand=slew(self.bankCommand,clamp(he/30,-0.65,0.65),1.8,dt); self.pitchCommand=slew(self.pitchCommand,clamp(ae/1200,-0.40,0.40),1.5,dt)
+  self.bankCommand=slew(self.bankCommand,clamp(he/30,-0.65,0.65)*authority,1.8,dt); self.pitchCommand=slew(self.pitchCommand,clamp(ae/1200,-0.40,0.40)*authority,1.5,dt)
   ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand
   return true
  end
@@ -44,15 +62,12 @@ function Autopilot:Step(dt)
  local he=err(targetH,heading)
  local bankLimit=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 0.75 or 0.65
  local bankGain=(ap.Mode=="APP_GS" or ap.Mode=="APP_LOC") and 1/12 or 1/30
- local targetBank=clamp(he*bankGain,-bankLimit,bankLimit)
- -- Approach geometry defines localizer as signed lateral displacement normalized by localizer length.
- -- Positive localizer means the aircraft is left of the runway centerline for the runway heading convention,
- -- so the autopilot commands a positive/right correction toward centerline.
+ local targetBank=clamp(he*bankGain,-bankLimit,bankLimit)*authority
  if ap.Mode=="APP_LOC" or ap.Mode=="APP_GS" then
   local loc=finite(ils and ils.Localizer) and ils.Localizer or 0
-  targetBank=clamp(loc*1.8,-bankLimit,bankLimit)
+  targetBank=clamp(loc*1.8,-bankLimit,bankLimit)*authority
  elseif ap.Mode=="APP_ARMED" then
-  targetBank=clamp(he/30,-bankLimit,bankLimit)
+  targetBank=clamp(he/30,-bankLimit,bankLimit)*authority
  end
  local altitudeError=targetA-altitude
  local pitchLimit=(ap.Mode=="APP_GS") and 0.32 or 0.45
@@ -63,8 +78,13 @@ function Autopilot:Step(dt)
  elseif ap.Mode=="VNAV" then targetPitch=clamp((v.CommandVerticalSpeed or 0)/2500,-pitchLimit,pitchLimit)
  elseif ap.Mode=="APP_GS" then local gsError=finite(ils and ils.GlideSlopeError) and ils.GlideSlopeError or 0; targetPitch=clamp(-gsError/3,-pitchLimit,pitchLimit)
  else targetPitch=clamp(altitudeError/1200,-pitchLimit,pitchLimit) end
+ -- Physical authority scales the demanded surface command. The autopilot may
+ -- request a target, but it cannot create elevator/aileron authority that the
+ -- hydraulic/flight-control model does not provide.
+ targetPitch*=authority; targetBank*=authority
  self.bankCommand=slew(self.bankCommand,targetBank,2.2,dt); self.pitchCommand=slew(self.pitchCommand,targetPitch,1.8,dt)
  ap.CommandBank=self.bankCommand; ap.CommandPitch=self.pitchCommand; ap.CommandAileron=self.bankCommand; ap.CommandElevator=self.pitchCommand
+ ap.AuthorityLimited=authority<0.75 or hydraulicAuthority<0.75
  return true
 end
 return Autopilot
