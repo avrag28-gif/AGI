@@ -130,6 +130,10 @@ local function run()
  FlightControls.new(degradedPhysics):Step(0.1)
  Physics.new(degradedPhysics):Step(1/60)
  check(math.abs(degradedPhysics.RollRate)<math.abs(normalPhysics.RollRate),"hydraulic degradation must reduce roll response in Physics")
+ check((normalPhysics.ControlFeel.PhysicsRollAuthority or 0)>0.9,"Physics must expose effective roll control authority")
+ check((normalPhysics.ControlFeel.PhysicsPitchAuthority or 0)>=0,"Physics must expose effective pitch control authority")
+ check((normalPhysics.ControlFeel.PhysicsYawAuthority or 0)>=0,"Physics must expose effective yaw control authority")
+ check((degradedPhysics.ControlFeel.PhysicsRollAuthority or 0)<(normalPhysics.ControlFeel.PhysicsRollAuthority or 0),"hydraulic degradation must propagate into Physics roll-authority telemetry")
 
  local yawState=baseState()
  yawState.Yaw=10
