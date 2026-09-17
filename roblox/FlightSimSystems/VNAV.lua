@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v2.0
+-- FlightSim VNAV vertical + speed guidance v2.1
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local AircraftProfile=require(script.Parent.AircraftProfile)
@@ -23,7 +23,7 @@ local function constraintTarget(wp,cruise,targetFallback)
  end
  return clamp(raw,0,60000),c,source
 end
-local function downstreamConstraint(route,index,aircraftAltitude,cruise)
+local function downstreamConstraint(route,index,aircraftAltitude)
  local totalM=0; local previous=route[index]
  if not previous or typeof(previous.Position)~="Vector3" then return nil end
  for i=index+1,#route do
@@ -41,7 +41,7 @@ local function downstreamConstraint(route,index,aircraftAltitude,cruise)
 end
 local function downstreamTOD(route,index,aircraftAltitude)
  if not finite(aircraftAltitude) then return nil end
- local nextIndex,target,c,totalM=downstreamConstraint(route,index,aircraftAltitude,nil)
+ local nextIndex,target,c,totalM=downstreamConstraint(route,index,aircraftAltitude)
  if not nextIndex or not finite(target) or target>=aircraftAltitude then return nil end
  local requiredM=math.max(0,(aircraftAltitude-target)/math.tan(math.rad(3))/FT_PER_M)
  return math.max(0,totalM-requiredM),nextIndex,target,c
@@ -60,6 +60,11 @@ function VNAV:Step(dt)
  local v=x.VNAV; v.GuidanceLimited=false; v.LimitReason=nil; v.ConstraintLookaheadIndex=nil; v.NextConstraintAltitude=nil; v.NextConstraintType=nil
  if v.Mode~="VNAV" then v.Mode="OFF"; v.Phase="OFF"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true; v.TopOfDescentDistance=nil; self.lastWaypoint=nil; return true end
  v.Mode="VNAV"
+ if nav.RouteComplete==true then
+  v.Phase="COMPLETE"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true; v.TopOfDescentDistance=nil; self.lastWaypoint=nil
+  nav.CommandAltitude=nil; nav.CommandVerticalSpeed=nil
+  return true
+ end
  local index=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); local wp=route[index]; self.lastWaypoint=index
  local altitude=finite(x.Altitude) and x.Altitude or 0; local target,constraint,source=constraintTarget(wp,fmc.CruiseAltitude,ap.TargetAltitude)
  v.ConstraintType=target and constraint or nil; v.ConstraintAltitude=target; v.TargetAltitude=target
@@ -68,7 +73,7 @@ function VNAV:Step(dt)
   if constraint=="ABOVE" then v.ConstraintSatisfied=altitude+tolerance>=target elseif constraint=="BELOW" then v.ConstraintSatisfied=altitude-tolerance<=target else v.ConstraintSatisfied=math.abs(altitude-target)<=tolerance end
   v.PathError=target-altitude
  else v.ConstraintSatisfied=true; v.PathError=0 end
- local downstreamIndex,downstreamTarget,downstreamType,downstreamDistance=downstreamConstraint(route,index,altitude,nil)
+ local downstreamIndex,downstreamTarget,downstreamType,downstreamDistance=downstreamConstraint(route,index,altitude)
  v.ConstraintLookaheadIndex=downstreamIndex; v.NextConstraintAltitude=downstreamTarget; v.NextConstraintType=downstreamType
  local distanceToWp=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distanceToWp*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
  local tod=nil
