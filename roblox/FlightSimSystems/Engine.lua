@@ -1,7 +1,6 @@
--- FlightSim engine runtime module v0.7
--- Generator availability is independent of downstream bus state to avoid the
--- electrical <-> engine circular dependency. Starter operation still requires
--- an electrically powered bus; Electrical consumes GeneratorAvailable on its next step.
+-- FlightSim engine runtime module v0.8
+-- Simulation approximation. Generator availability is derived from engine N2,
+-- while starter ignition is gated by electrical power and an actual fuel path.
 local Config = require(script.Parent.Config)
 local Engine = {}
 Engine.__index = Engine
@@ -19,7 +18,7 @@ end
 
 function Engine:Step(dt)
 	local x = self.state:Get()
-	local electrical = (x.Electrical.Bus1 == true) or (x.Electrical.Bus2 == true)
+	local electrical = ((x.Electrical or {}).Bus1 == true) or ((x.Electrical or {}).Bus2 == true)
 	local fuelSystem = x.FuelSystem or {}
 	local failures = x.Failures and x.Failures.Engines or {}
 	local antiIce = x.AntiIce or {}
@@ -27,9 +26,9 @@ function Engine:Step(dt)
 	for index = 1, 2 do
 		local e = x.Engines[index]
 		local failure = failures[index]
-		local throttle = math.clamp(tonumber(x.Throttle[index]) or 0, 0, 1)
-		local fuelAvailable = (x.Fuel.Total or 0) > 0
-		local fuelPathAvailable = fuelSystem.EngineFuelAvailable == nil or fuelSystem.EngineFuelAvailable[index] ~= false
+		local throttle = math.clamp(tonumber((x.Throttle or {})[index]) or 0, 0, 1)
+		local fuelAvailable = (x.Fuel and x.Fuel.Total or 0) > 0
+		local fuelPathAvailable = fuelSystem.EngineFuelAvailable ~= nil and fuelSystem.EngineFuelAvailable[index] == true
 
 		if failure and failure.Active then
 			e.FuelOn = false
@@ -46,12 +45,17 @@ function Engine:Step(dt)
 			e.N2 = approach(e.N2, e.Running and (55 + 35 * throttle) or 0, e.Running and 12 or 5, dt)
 		end
 
-		if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition and fuelAvailable and fuelPathAvailable and e.N2 >= Config.StartN2 then
+		-- A commanded start is successful only when BOTH electrical starter power
+		-- and a currently available fuel path exist.
+		if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition
+			and electrical and fuelAvailable and fuelPathAvailable
+			and e.N2 >= Config.StartN2 then
 			e.Running = true
-		e.StartFailed = false
+			e.StartFailed = false
 		end
 
-		if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition and (not electrical or not fuelAvailable or not fuelPathAvailable) then
+		if usable and not e.Running and e.Starter and e.FuelOn and e.Ignition
+			and (not electrical or not fuelAvailable or not fuelPathAvailable) then
 			e.StartFailed = true
 		end
 
@@ -74,7 +78,6 @@ function Engine:Step(dt)
 			local penalty = tonumber(antiIce.EnginePenalty and antiIce.EnginePenalty[index]) or 1
 			penalty = math.clamp(penalty, 0.85, 1)
 			e.Thrust = (e.N1 / 100) * (Config.MaxThrust / 2) * penalty
-			-- Generator output is an engine condition, not proof that its destination bus is live.
 			e.GeneratorAvailable = e.N2 >= 50
 		else
 			e.N1 = approach(e.N1, 0, 18, dt)
