@@ -1,14 +1,18 @@
--- FlightSim nose-wheel steering / taxi dynamics v0.2
+-- FlightSim nose-wheel steering / taxi dynamics v0.3
 -- Server-authoritative ground directional-control foundation.
 -- Values are simulation approximations, not certified aircraft data.
 local GroundSteering={}; GroundSteering.__index=GroundSteering
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function approach(v,t,r,dt) local d=t-v; local s=r*dt; if math.abs(d)<=s then return t end return v+(d>0 and s or -s) end
+local function pressure(system)
+ if type(system)=="table" then return math.max(tonumber(system.Pressure) or 0,0) end
+ return math.max(tonumber(system) or 0,0)
+end
 function GroundSteering.new(state) return setmetatable({state=state},GroundSteering) end
 function GroundSteering:Step(dt)
  local x=self.state:Get(); local c=x.Controls or {}; local g=x.GearStatus or {}; local h=x.Hydraulic or {}; local gs=x.GroundSteering or {}
- local speed=math.max(x.Airspeed or 0,0)
- local hydraulic=math.max(h.A or 0,h.B or 0)
+ local speed=math.max(tonumber(x.Airspeed) or 0,0)
+ local hydraulic=math.max(pressure(h.A),pressure(h.B),pressure(h.Standby))
  local ground=x.GroundContact==true
  local gearReady=g.DownLocked==true and (tonumber(g.Nose) or 0)>=0.98
  local available=ground and gearReady and hydraulic>=900
@@ -23,8 +27,8 @@ function GroundSteering:Step(dt)
  if available and speed>1 then
   noseYaw=clamp((angle/maxAngle)*28*steeringAuthority,-18,18)
  end
- local left=(x.Brakes and x.Brakes.LeftPressure) or 0
- local right=(x.Brakes and x.Brakes.RightPressure) or 0
+ local left=(x.Brakes and tonumber(x.Brakes.LeftPressure)) or 0
+ local right=(x.Brakes and tonumber(x.Brakes.RightPressure)) or 0
  local differential=0
  if available and speed>2 and speed<22 then
   differential=clamp((right-left)*8,-8,8)
