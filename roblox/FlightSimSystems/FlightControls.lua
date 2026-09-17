@@ -1,5 +1,7 @@
--- FlightSim flight-control system v1.0
+-- FlightSim flight-control system v1.1
 -- Server-authoritative control-surface scheduling and hydraulic demand reporting.
+-- Hydraulic demand represents commanded actuator load, not achieved surface authority;
+-- this prevents low pressure from incorrectly reducing its own hydraulic demand.
 local FlightControls={}; FlightControls.__index=FlightControls
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function approach(v,t,r,dt) local d=t-v; local s=r*dt; if math.abs(d)<=s then return t end return v+(d>0 and s or -s) end
@@ -14,11 +16,14 @@ function FlightControls:Step(dt)
  if ap.Enabled then ail=clamp(tonumber(ap.CommandAileron) or ail,-1,1); ele=clamp(tonumber(ap.CommandElevator) or ele,-1,1) end
  ele=clamp(ele+clamp((x.TrimPitch or 0)/10,-0.45,0.45),-1,1)
  local groundAileron=ground and clamp(speed/45,0,1) or 1; local groundElevator=ground and clamp((speed-35)/45,0.12,1) or 1; local groundRudder=ground and clamp((speed-8)/28,0,1) or 1
- local ailTarget=ail*authority*groundAileron*clamp(failures.AileronAuthority or 1,0,1); local eleTarget=ele*authority*groundElevator*clamp(failures.ElevatorAuthority or 1,0,1); local rudTarget=clamp(c.Rudder or 0,-1,1)*authority*groundRudder*clamp(failures.RudderAuthority or 1,0,1)
+ local ailFailure=clamp(failures.AileronAuthority or 1,0,1); local eleFailure=clamp(failures.ElevatorAuthority or 1,0,1); local rudFailure=clamp(failures.RudderAuthority or 1,0,1)
+ local ailTarget=ail*authority*groundAileron*ailFailure; local eleTarget=ele*authority*groundElevator*eleFailure; local rudTarget=clamp(c.Rudder or 0,-1,1)*authority*groundRudder*rudFailure
  local flapTarget=(x.FlapSystem and tonumber(x.FlapSystem.Target) or nil); flapTarget=clamp((flapTarget~=nil and flapTarget/40 or tonumber(c.Flap) or 0),0,1)
  x.Surface.Aileron=approach(x.Surface.Aileron,ailTarget,9,dt); x.Surface.Elevator=approach(x.Surface.Elevator,eleTarget,7,dt); x.Surface.Rudder=approach(x.Surface.Rudder,rudTarget,6,dt); x.Surface.Flap=approach(x.Surface.Flap,flapTarget,2,dt)
- x.ControlFeel=x.ControlFeel or {}; x.ControlFeel.HydraulicAuthority=hydraulic; x.ControlFeel.DynamicAuthority=dynamicAuthority; x.ControlFeel.AileronAuthority=groundAileron*clamp(failures.AileronAuthority or 1,0,1); x.ControlFeel.ElevatorAuthority=groundElevator*clamp(failures.ElevatorAuthority or 1,0,1); x.ControlFeel.RudderAuthority=groundRudder*clamp(failures.RudderAuthority or 1,0,1)
- local ailLoad=math.abs(ailTarget); local eleLoad=math.abs(eleTarget); local rudLoad=math.abs(rudTarget); x.HydraulicDemand=x.HydraulicDemand or {}; x.HydraulicDemand.FlightControls=clamp(math.max(ailLoad,eleLoad,rudLoad),0,1); x.HydraulicDemand.FlightControlsA=clamp(math.max(eleLoad,rudLoad*0.7),0,1); x.HydraulicDemand.FlightControlsB=clamp(math.max(ailLoad,eleLoad*0.7),0,1)
+ x.ControlFeel=x.ControlFeel or {}; x.ControlFeel.HydraulicAuthority=hydraulic; x.ControlFeel.DynamicAuthority=dynamicAuthority; x.ControlFeel.AileronAuthority=groundAileron*ailFailure; x.ControlFeel.ElevatorAuthority=groundElevator*eleFailure; x.ControlFeel.RudderAuthority=groundRudder*rudFailure
+ -- Demand is the requested actuator load. It must not collapse merely because pressure is low.
+ local ailLoad=math.abs(ail)*groundAileron*ailFailure; local eleLoad=math.abs(ele)*groundElevator*eleFailure; local rudLoad=math.abs(clamp(c.Rudder or 0,-1,1))*groundRudder*rudFailure
+ x.HydraulicDemand=x.HydraulicDemand or {}; x.HydraulicDemand.FlightControls=clamp(math.max(ailLoad,eleLoad,rudLoad),0,1); x.HydraulicDemand.FlightControlsA=clamp(math.max(eleLoad,rudLoad*0.7),0,1); x.HydraulicDemand.FlightControlsB=clamp(math.max(ailLoad,eleLoad*0.7),0,1)
  return true
 end
 return FlightControls
