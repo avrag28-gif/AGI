@@ -1,4 +1,4 @@
--- Boeing 737-800 NG authoritative aircraft state v3.7
+-- Boeing 737-800 NG authoritative aircraft state v3.8
 -- State is the single shared simulation contract.
 -- Weight/CG limits are simulation configuration baselines, not dispatch/AFM data.
 local State={}; State.__index=State
@@ -18,29 +18,13 @@ function State.new()
 		Position=Vector3.zero,Velocity=Vector3.zero,VerticalSpeed=0,AirspeedTrue=0,AoA=0,
 		StallWarning=false,Lift=0,Drag=0,Weight=0,Mass=0,TrimPitch=0,GroundContact=true,
 		Throttle={[1]=0,[2]=0},Engines={[1]=engineState(),[2]=engineState()},ReverseThrust=0,
-
-		-- Weight & balance. Baseline 737-800 mixed-class OEW is from Boeing airport-planning data.
-		WeightBalance={
-			OperatingEmptyMassKg=41413,
-			PayloadMassKg=0,
-			FuelMassKg=0,
-			ZeroFuelMassKg=41413,
-			GrossMassKg=41413,
-			CenterOfGravityPercentMAC=25,
-			MaxTakeoffMassKg=79016,
-			MaxLandingMassKg=66361,
-			MaxZeroFuelMassKg=62732,
-			MaxTaxiMassKg=79242,
-			Overweight=false,
-			TakeoffWeightLimited=false,
-			LandingWeightLimited=false,
-		},
-
+		WeightBalance={OperatingEmptyMassKg=41413,PayloadMassKg=0,FuelMassKg=0,ZeroFuelMassKg=41413,GrossMassKg=41413,CenterOfGravityPercentMAC=25,MaxTakeoffMassKg=79016,MaxLandingMassKg=66361,MaxZeroFuelMassKg=62732,MaxTaxiMassKg=79242,Overweight=false,TakeoffWeightLimited=false,LandingWeightLimited=false},
 		Electrical={Battery=false,ExternalPower=false,APU=false,APUGeneratorAvailable=false,Bus1=false,Bus2=false,BusTie=false,StandbyBus=false,LoadShed={NonEssential=false,Display=false,Avionics=false}},
 		Hydraulic={A=hydraulicState(),B=hydraulicState(),Standby=hydraulicState()},
 		HydraulicDemand={FlightControls=0,LandingGear=0,Brakes=0,Total=0,A=0,B=0,Standby=0},
-		Fuel={Left=10000,Center=10000,Right=10000,Total=30000},
-		FuelSystem={LeftQuantity=10000,CenterQuantity=10000,RightQuantity=10000,TotalQuantity=30000,LeftPumpSwitch=false,CenterPumpSwitch=false,RightPumpSwitch=false,LeftPump=false,CenterPump=false,RightPump=false,CrossfeedSwitch=false,Crossfeed=false,LeftFeed=false,RightFeed=false,CenterFeed=false,EngineFeed={[1]="AUTO",[2]="AUTO"},EngineFuelSource={[1]="NONE",[2]="NONE"},EngineFuelDemand={[1]=0,[2]=0},EngineFuelDelivered={[1]=0,[2]=0},EngineFuelStarved={[1]=false,[2]=false},EngineFuelAvailable={[1]=false,[2]=false},LowFuel=false,Imbalance=0,FeedPressure=0},
+		-- Cold-and-dark starts with empty usable fuel; dispatch/loading logic populates tanks.
+		Fuel={Left=0,Center=0,Right=0,Total=0},
+		FuelSystem={LeftQuantity=0,CenterQuantity=0,RightQuantity=0,TotalQuantity=0,LeftPumpSwitch=false,CenterPumpSwitch=false,RightPumpSwitch=false,LeftPump=false,CenterPump=false,RightPump=false,CrossfeedSwitch=false,Crossfeed=false,LeftFeed=false,RightFeed=false,CenterFeed=false,EngineFeed={[1]="AUTO",[2]="AUTO"},EngineFuelSource={[1]="NONE",[2]="NONE"},EngineFuelDemand={[1]=0,[2]=0},EngineFuelDelivered={[1]=0,[2]=0},EngineFuelStarved={[1]=false,[2]=false},EngineFuelAvailable={[1]=false,[2]=false},LowFuel=false,Imbalance=0,FeedPressure=0},
 		APU={Running=false,Starter=false,EGT=20,RPM=0,GeneratorAvailable=false,StartFailed=false,Fire=false,Overheat=false},
 		BleedAir={Engine1Source=false,Engine2Source=false,APUAvailable=false,APUSource=false,Pack1Available=false,Pack2Available=false,Pack1Output=0,Pack2Output=0,SourceAvailable=false,BleedPressure=0,IsolationValveOpen=false,Pack1Valve=false,Pack2Valve=false},
 		Pressurization={CabinAltitudeFt=0,CabinAltitudeRateFpm=0,DifferentialPsi=0,OutflowValve=0.35,Auto=true,ManualCommand=0.35,LandingAltitudeFt=0,Pack1Available=false,Pack2Available=false,BleedSource1=false,BleedSource2=false,SourceAvailable=false,Warning=false,CabinAltitudeWarning=false,DifferentialWarning=false,Dump=false,ReliefActive=false,TakeoffWarning=false},
