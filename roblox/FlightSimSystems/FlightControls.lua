@@ -20,7 +20,7 @@ function FlightControls:Step(dt)
  local pB=hydraulicBFailed and 0 or pressure(h.B)
  local pS=pressure(h.Standby)
  local aHyd=clamp(pA/1800,0,1); local bHyd=clamp(pB/1800,0,1); local sHyd=clamp(pS/1800,0,1)
- local dynamicAuthority=clamp(0.22+speed/105,0.22,1.15); local ground=x.GroundContact==true
+ local dynamicAuthority=clamp(0.22+speed/105,0.22,1.15); local ground=x.GroundContact==true\n -- At very high AoA the surfaces still move, but aerodynamic effectiveness falls.\n -- Keep this separate from hydraulic authority so cockpit/control indications remain\n -- honest about whether the limitation is hydraulic or aerodynamic. Physics applies the\n -- same stall factor to the resulting moments.\n local aoa=tonumber(x.AoA) or 0\n local highAoAFactor=clamp(1-math.max(math.abs(aoa)-10,0)/10,0.35,1)
  x.Surface=x.Surface or {Aileron=0,Elevator=0,Rudder=0,Flap=0,Speedbrake=0,SpoilerLeft=0,SpoilerRight=0}
  local ail=clamp(tonumber(c.Aileron) or 0,-1,1); local ele=clamp(tonumber(c.Elevator) or 0,-1,1)
  if ap.Enabled then ail=clamp(tonumber(ap.CommandAileron) or ail,-1,1); ele=clamp(tonumber(ap.CommandElevator) or ele,-1,1) end
@@ -40,7 +40,7 @@ function FlightControls:Step(dt)
  local flapTarget=(x.FlapSystem and tonumber(x.FlapSystem.Target) or nil); flapTarget=clamp((flapTarget~=nil and flapTarget/40 or tonumber(c.Flap) or 0),0,1)
  x.Surface.Aileron=approach(x.Surface.Aileron,ailTarget,9,dt); x.Surface.Elevator=approach(x.Surface.Elevator,eleTarget,7,dt); x.Surface.Rudder=approach(x.Surface.Rudder,rudTarget,6,dt); x.Surface.Flap=approach(x.Surface.Flap,flapTarget,2,dt)
  x.ControlFeel=x.ControlFeel or {}
- x.ControlFeel.HydraulicAuthority=math.max(ailHyd,eleHyd,rudHyd); x.ControlFeel.DynamicAuthority=dynamicAuthority
+ x.ControlFeel.HydraulicAuthority=math.max(ailHyd,eleHyd,rudHyd); x.ControlFeel.DynamicAuthority=dynamicAuthority; x.ControlFeel.HighAoAAuthority=highAoAFactor
  x.ControlFeel.AileronAuthority=clamp(ailHyd*groundAileron*ailFailure,0,1); x.ControlFeel.ElevatorAuthority=clamp(eleHyd*groundElevator*eleFailure,0,1); x.ControlFeel.RudderAuthority=clamp(rudHyd*groundRudder*rudFailure,0,1)
  x.ControlFeel.HydraulicA=aHyd; x.ControlFeel.HydraulicB=bHyd; x.ControlFeel.HydraulicStandby=sHyd; x.ControlFeel.ManualReversion=manualReversion>0; x.ControlFeel.YawDamperActive=yawDamperEngaged
  x.FlightControls=x.FlightControls or {}; x.FlightControls.PrimaryHydraulicA=aHyd>0.28; x.FlightControls.PrimaryHydraulicB=bHyd>0.28; x.FlightControls.ManualReversion=manualReversion>0; x.FlightControls.FeelDifferential=clamp((aHyd-bHyd)*dynamicAuthority,-1,1); x.FlightControls.ElevatorPCU1=eleHyd>0.05; x.FlightControls.ElevatorPCU2=eleHyd>0.05; x.FlightControls.RudderPCU=rudHyd>0.05; x.FlightControls.AileronPCU=ailHyd>0.05; x.FlightControls.YawDamper=yawDamperEngaged
