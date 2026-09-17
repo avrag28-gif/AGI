@@ -20,7 +20,13 @@ function FlightControls:Step(dt)
  local pB=hydraulicBFailed and 0 or pressure(h.B)
  local pS=pressure(h.Standby)
  local aHyd=clamp(pA/1800,0,1); local bHyd=clamp(pB/1800,0,1); local sHyd=clamp(pS/1800,0,1)
- local dynamicAuthority=clamp(0.22+speed/105,0.22,1.15); local ground=x.GroundContact==true\n -- At very high AoA the surfaces still move, but aerodynamic effectiveness falls.\n -- Keep this separate from hydraulic authority so cockpit/control indications remain\n -- honest about whether the limitation is hydraulic or aerodynamic. Physics applies the\n -- same stall factor to the resulting moments.\n local aoa=tonumber(x.AoA) or 0\n local highAoAFactor=clamp(1-math.max(math.abs(aoa)-10,0)/10,0.35,1)
+ local dynamicAuthority=clamp(0.22+speed/105,0.22,1.15); local ground=x.GroundContact==true
+ -- At very high AoA the surfaces still move, but aerodynamic effectiveness falls.
+ -- Keep this separate from hydraulic authority so cockpit/control indications remain
+ -- honest about whether the limitation is hydraulic or aerodynamic. Physics applies the
+ -- same stall factor to the resulting moments.
+ local aoa=tonumber(x.AoA) or 0
+ local highAoAFactor=clamp(1-math.max(math.abs(aoa)-10,0)/10,0.35,1)
  x.Surface=x.Surface or {Aileron=0,Elevator=0,Rudder=0,Flap=0,Speedbrake=0,SpoilerLeft=0,SpoilerRight=0}
  local ail=clamp(tonumber(c.Aileron) or 0,-1,1); local ele=clamp(tonumber(c.Elevator) or 0,-1,1)
  if ap.Enabled then ail=clamp(tonumber(ap.CommandAileron) or ail,-1,1); ele=clamp(tonumber(ap.CommandElevator) or ele,-1,1) end
