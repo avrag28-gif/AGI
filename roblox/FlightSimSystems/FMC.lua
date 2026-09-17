@@ -1,4 +1,4 @@
--- FlightSim FMC/CDU data model v0.5
+-- FlightSim FMC/CDU data model v0.6
 -- Validates route data and exposes active-leg/progress data for VNAV and navigation.
 local FMC={}; FMC.__index=FMC
 local MAX_WAYPOINTS=64; local MAX_IDENT=8
@@ -19,6 +19,7 @@ end
 function FMC.new(state) return setmetatable({state=state,page="IDENT",scratch=""},FMC) end
 function FMC:Step(dt)
  local x=self.state:Get(); x.FMC=x.FMC or {}; local f=x.FMC; local nav=x.Navigation or {}; local route=f.Route or nav.Route or {}
+ if #(f.Route or {})==0 and #route>0 then f.Route=route end
  local index=math.clamp(math.floor(tonumber(nav.ActiveWaypoint) or 1),1,math.max(1,#route))
  f.Page=f.Page or self.page; f.Scratchpad=f.Scratchpad or self.scratch; f.ActiveWaypoint=index; f.LegIndex=index; f.RouteComplete=nav.RouteComplete==true; f.Active=(#route>0) and not f.RouteComplete
  local previous=route[index-1]; local active=route[index]; local next=route[index+1]
