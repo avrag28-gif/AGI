@@ -1,4 +1,4 @@
--- FlightSim hydraulic/control-authority regression tests v1.1
+-- FlightSim hydraulic/control-authority regression tests v1.2
 local State=require(script.Parent.State)
 local FlightControls=require(script.Parent.FlightControls)
 local Test={}
@@ -44,6 +44,20 @@ function Test.Run()
 	check(math.abs(partial.Surface.Elevator)>0.20,"single-primary elevator authority is too low")
 	check(partial.ControlFeel.AileronAuthority>0.5,"aileron hydraulic authority was not reported")
 	check(partial.ControlFeel.ElevatorAuthority>0.5,"elevator hydraulic authority was not reported")
+
+	-- Airspeed affects aerodynamic effectiveness in Physics, not hydraulic
+	-- surface travel. A low-speed airborne command must not be attenuated twice.
+	local lowSpeed=newState()
+	lowSpeed.Airspeed=40
+	lowSpeed.Controls.Aileron=1
+	lowSpeed.Controls.Elevator=1
+	lowSpeed.Hydraulic.A.Pressure=3000
+	lowSpeed.Hydraulic.B.Pressure=3000
+	local lowSpeedControls=FlightControls.new(lowSpeed)
+	lowSpeedControls:Step(0.1)
+	check(math.abs(lowSpeed.Surface.Aileron)>0.80,"low-speed aileron surface travel was incorrectly airspeed-limited")
+	check(math.abs(lowSpeed.Surface.Elevator)>0.80,"low-speed elevator surface travel was incorrectly airspeed-limited")
+	check(lowSpeed.ControlFeel.DynamicAuthority<0.7,"dynamic-authority telemetry did not reflect low speed")
 
 	-- Standby hydraulic pressure can restore rudder authority, but must not
 	-- silently restore the primary aileron/elevator manual-reversion path.
