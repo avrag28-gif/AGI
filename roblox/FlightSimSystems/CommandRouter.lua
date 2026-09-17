@@ -1,4 +1,4 @@
--- FlightSim server command router v2.2
+-- FlightSim server command router v2.3
 local Config=require(script.Parent.Config)
 local CommandRouter={}; CommandRouter.__index=CommandRouter
 local ALLOWED={Battery=true,ExternalPower=true,APU=true,EngineStarter=true,EngineFuel=true,EngineIgnition=true,Throttle=true,Control=true,Flap=true,Gear=true,ParkingBrake=true,ToeBrake=true,NoseWheelSteering=true,AP=true,APTarget=true,NavMode=true,VNAVMode=true,FMCPage=true,FMCScratchpad=true,FMCRoute=true,RadioFrequency=true,TransponderCode=true,TransponderMode=true,TransponderIdent=true,WeatherRadar=true,MCPHeading=true,MCPAltitude=true,MCPMode=true,MCPspeed=true,MCPSpeed=true,MCPVerticalSpeed=true,AutoThrottle=true,ApproachRunway=true,Trim=true,ReverseThrust=true,GoAround=true,VORCourse=true,FuelPump=true,FuelCrossfeed=true,EngineFuelFeed=true,ATCCallsign=true,ATCPhase=true,ATCRequest=true,ATCReadback=true,ATCTakeoffRequest=true,ATCLandingRequest=true,ATCEnterRunway=true,ATCReleaseRunway=true,PressurizationMode=true,OutflowValve=true,LandingAltitude=true,EngineAntiIce=true,WingAntiIce=true}
@@ -19,7 +19,15 @@ function CommandRouter:Handle(player,id,command,a,b)
  elseif command=="Flap" then local v=tonumber(a); if not finite(v) then return false,"invalid_flap" end; x.Controls.Flap=math.clamp(v,0,1) elseif command=="Gear" then x.Gear.Nose,x.Gear.Left,x.Gear.Right=a==true,a==true,a==true elseif command=="ParkingBrake" then x.Brakes.Parking=a==true
  elseif command=="ToeBrake" then local v=tonumber(a); if not finite(v) then return false,"invalid_toe_brake" end; x.Brakes.ToeBrake=math.clamp(v,0,1) elseif command=="NoseWheelSteering" then local v=tonumber(a); if not finite(v) then return false,"invalid_nose_wheel_steering" end; x.Controls.NoseWheelSteering=math.clamp(v,-1,1)
  elseif command=="ReverseThrust" then local v=tonumber(a); if not finite(v) then return false,"invalid_reverse_thrust" end; x.ReverseThrust=math.clamp(v,0,1); for i=1,2 do x.Engines[i].Reverse=x.ReverseThrust>0 end
- elseif command=="GoAround" then local at=self.getAutoThrottle and self.getAutoThrottle(id); if a==true then x.Autopilot.GoAround=true; x.Landing.GoAround=true; x.Navigation.Mode="HDG"; x.VNAV.Mode="OFF"; x.Autopilot.GoAroundHeading=x.Heading; x.Autopilot.GoAroundAltitude=math.max(x.Autopilot.TargetAltitude or 0,x.Altitude+1000); x.Autopilot.TargetHeading=x.Heading; x.Autopilot.TargetAltitude=x.Autopilot.GoAroundAltitude; if at then at:GoAround() end else x.Autopilot.GoAround=false; x.Landing.GoAround=false; x.Autopilot.GoAroundHeading=nil; x.Autopilot.GoAroundAltitude=nil; if at then at:SetEnabled(false) end end
+ elseif command=="GoAround" then
+  local at=self.getAutoThrottle and self.getAutoThrottle(id)
+  if a==true then
+   x.Autopilot.GoAround=true; x.Autopilot.Enabled=true; x.Landing.GoAround=true; x.Navigation.Mode="HDG"; x.VNAV.Mode="OFF"
+   x.Autopilot.GoAroundHeading=x.Heading; x.Autopilot.GoAroundAltitude=math.max(x.Autopilot.TargetAltitude or 0,x.Altitude+1000); x.Autopilot.TargetHeading=x.Heading; x.Autopilot.TargetAltitude=x.Autopilot.GoAroundAltitude
+   if at then at:GoAround() end
+  else
+   x.Autopilot.GoAround=false; x.Landing.GoAround=false; x.Autopilot.GoAroundHeading=nil; x.Autopilot.GoAroundAltitude=nil; if at then at:SetEnabled(false) end
+  end
  elseif command=="VORCourse" then local c=tonumber(a); if not finite(c) then return false,"invalid_vor_course" end; x.Navigation.VORCourse=(c%360+360)%360 elseif command=="AP" then x.Autopilot.Enabled=a==true
  elseif command=="APTarget" then local alt,hdg=tonumber(a),tonumber(b); if alt and not finite(alt) then return false,"invalid_altitude" end; if hdg and not finite(hdg) then return false,"invalid_heading" end; if alt then x.Autopilot.TargetAltitude=math.clamp(alt,0,60000) end; if hdg then x.Autopilot.TargetHeading=(hdg%360+360)%360 end
  elseif command=="NavMode" then local m=string.upper(tostring(a)); if m~="HDG" and m~="LNAV" and m~="APP" and m~="VOR" then return false,"invalid_nav_mode" end; x.Navigation.Mode=m elseif command=="VNAVMode" then local m=string.upper(tostring(a)); if m~="VNAV" and m~="OFF" then return false,"invalid_vnav_mode" end; x.VNAV.Mode=m
