@@ -16,7 +16,7 @@ local function approach(v,t,r,dt) local d=t-v; local s=r*dt; if math.abs(d)<=s t
 local function finite(v,d) v=tonumber(v); return (v and v==v and v~=math.huge and v~=-math.huge) and v or d end
 function Physics.new(state) return setmetatable({state=state},Physics) end
 function Physics:Step(dt)
- local x=self.state:Get(); local s=x.Surface or {}; local e1=x.Engines[1] or {}; local e2=x.Engines[2] or {}; dt=clamp(finite(dt,1/60),0,0.25)
+ local x=self.state:Get(); local s=x.Surface or {}; local e1=x.Engines[1] or {}; local e2=x.Engines[2] or {}; x.EngineIntegration=x.EngineIntegration or {}; x.AeroStability=x.AeroStability or {}; dt=clamp(finite(dt,1/60),0,0.25)
  local speedKts=math.max(finite(x.Airspeed,0),0); local speedMS=speedKts*0.514444
  local weather=x.WeatherEffects or {}; local effectiveAirspeed=clamp(finite(weather.EffectiveAirspeed,speedKts),0,500); local aeroSpeedMS=effectiveAirspeed*0.514444
  local altitudeFt=math.max(finite(x.Altitude,0),0)
