@@ -1,4 +1,4 @@
--- FlightSim aerodynamic / ground dynamics foundation v3.4
+-- FlightSim aerodynamic / ground dynamics foundation v3.5
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 -- State units: Airspeed=kt, Altitude=ft, VerticalSpeed=ft/min, Position/Velocity=game-space meters.
 local Config=require(script.Parent.Config)
@@ -27,10 +27,9 @@ function Physics:Step(dt)
  local throttle=(clamp(finite((x.Throttle or {})[1],0),0,1)+clamp(finite((x.Throttle or {})[2],0),0,1))*0.5
  local lt=math.max(finite(e1.Thrust,0),0); local rt=math.max(finite(e2.Thrust,0),0); local thrust=lt+rt; local ground=x.GroundContact==true; local flap=clamp(finite(s.Flap,0),0,1); local gear=x.GearPosition or {}; local gearExposed=clamp((finite(gear.Nose,0)+finite(gear.Left,0)+finite(gear.Right,0))/3,0,1)
  local brakes=x.Brakes or {}; local brake=clamp(finite(brakes.BrakePressure,0),0,1); local lp=clamp(finite(brakes.LeftPressure,brake),0,1); local rp=clamp(finite(brakes.RightPressure,brake),0,1); local reverse=ground and clamp(finite(x.ReverseThrust,0),0,1) or 0
- local asym=(rt-lt)/math.max(thrust,1); local yawMoment=(rt-lt)*Config.EngineLateralArm*Config.EngineYawMomentGain; x.EngineIntegration.TotalThrust=thrust; x.EngineIntegration.LeftThrust=lt; x.EngineIntegration.RightThrust=rt; x.EngineIntegration.ThrustAsymmetry=clamp(asym,-1,1); x.EngineIntegration.EngineOut=(e1.Running==true and e2.Running~=true) or (e2.Running==true and e1.Running~=true); x.EngineIntegration.YawMoment=yawMoment
+ local asym=(rt-lt)/math.max(thrust,1); x.EngineIntegration.TotalThrust=thrust; x.EngineIntegration.LeftThrust=lt; x.EngineIntegration.RightThrust=rt; x.EngineIntegration.ThrustAsymmetry=clamp(asym,-1,1); x.EngineIntegration.EngineOut=(e1.Running==true and e2.Running~=true) or (e2.Running==true and e1.Running~=true)
  local wingArea=125; local trim=clamp(finite(x.TrimPitch,0),-8,8); local pitchAngle=finite(x.Pitch,0)
  -- Control-surface effects are applied through the already hydraulic-limited Surface state.
- -- Elevator changes pitching tendency, aileron changes roll tendency, rudder changes yaw/sideslip.
  local controlLoad=clamp(math.abs(finite(s.Elevator,0))+math.abs(finite(s.Aileron,0))*0.35+math.abs(finite(s.Rudder,0))*0.15,0,1.5)
  local aoa=clamp(2.5+0.15*(pitchAngle-trim)+0.20*flap+0.75*finite(s.Elevator,0),-20,30)
  local flapLift=0.52*flap+0.20*flap*flap; local flapDrag=0.025*flap+0.035*flap*flap
@@ -41,19 +40,17 @@ function Physics:Step(dt)
  local bank=clamp(finite(x.Roll,0),-70,70); local fpa=math.rad(pitchAngle-aoa)
  local wheelNormal=math.max(weight*math.cos(math.rad(bank)),0); local wheelBrake=ground and 0.38*wheelNormal*clamp((lp+rp)*0.5,0,1) or 0
  local reverseForce=ground and reverse*thrust*1.25*clamp(speedKts/35,0,1) or 0
- -- Gravity acts along the flight path. This prevents a pitched climb from
- -- unrealistically retaining the same longitudinal acceleration as level flight.
  local gravityAlongPath=ground and 0 or weight*math.sin(fpa)
  local longitudinal=thrust-drag-wheelBrake-reverseForce-gravityAlongPath
  if ground and speedKts<25 and throttle<0.05 and brake<0.05 and reverse<0.05 then longitudinal-=0.8*mass end
  local accel=longitudinal/math.max(mass,1); x.Airspeed=clamp(speedKts+accel*1.94384*dt,0,Config.MaxAirspeed); x.DynamicPressure=q; x.Lift=lift; x.Drag=drag; x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor; x.AoA=aoa
- -- Evaluate the envelope after current-step load factor is available. This removes
- -- the previous one-step lag and makes accelerated-stall threshold consistent with
- -- the force model. The envelope remains a speed/load-factor approximation; the
- -- aerodynamic AoA stall model below is retained as an additional protection path.
  local envelope=FlightEnvelope.Step(x)
  x.StallWarning=envelope.StallWarning or math.abs(aoa)>=13 and speedKts>45; x.StallActive=envelope.StallActive or stall>=1; x.OverspeedWarning=envelope.Overspeed
- local qf=clamp(effectiveAirspeed/140,0.12,1.2); local ail=clamp(finite(s.Aileron,0),-1,1); local ele=clamp(finite(s.Elevator,0),-1,1); local rud=clamp(finite(s.Rudder,0),-1,1)
+ -- High-AoA/stall reduces the effectiveness of all aerodynamic control moments.
+ -- The surfaces remain physically commanded, but their aerodynamic authority is degraded.
+ local stallControlFactor=1-0.70*stall
+ local qf=clamp(effectiveAirspeed/140,0.12,1.2)*stallControlFactor
+ local ail=clamp(finite(s.Aileron,0),-1,1); local ele=clamp(finite(s.Elevator,0),-1,1); local rud=clamp(finite(s.Rudder,0),-1,1)
  local pCtrl=ele*9*qf; local rCtrl=ail*28*qf; local yCtrl=rud*9*qf
  local pr=finite(x.PitchRate,0); local rr=finite(x.RollRate,0); local yr=finite(x.YawRate,0)
  if ground then local auth=clamp((speedKts-55)/40,0.1,1); pr=approach(pr,pCtrl*auth+0.05*turbP,7,dt); rr=approach(rr,rCtrl*clamp(speedKts/45,0,1)+0.05*turbR,8,dt); yr=finite((x.GroundSteering or {}).YawRate,0); x.Sideslip=approach(finite(x.Sideslip,0),clamp(crosswind*0.03,-3,3),4,dt)
@@ -61,17 +58,19 @@ function Physics:Step(dt)
   local turn=0; if speedMS>15 then turn=math.deg(G*math.tan(math.rad(bank))/speedMS) end; turn=clamp(turn,-12,12)
   local beta=finite(x.Sideslip,finite(x.Beta,0)); local windBeta=clamp(crosswind/math.max(effectiveAirspeed,60)*57.2958,-5,5); local desired=clamp(rud*4.5+turn*.1-rCtrl*.035+windBeta*.12,-10,10)
   beta=clamp(beta+((desired-beta)*2.8-beta*.55-yr*.045)*dt,-12,12)
-  yr=approach(yr,turn*.32+yCtrl-beta*.95-yr*.72-ail*1.4*qf+yawMoment+clamp(crosswind*.015,-.9,.9),5.5,dt)
+  -- Engine-out yaw is derived from normalized thrust asymmetry. The previous
+  -- implementation added a force-like quantity directly to deg/s, which could
+  -- create unrealistically large yaw rates. Keep the effect bounded and speed-aware.
+  local asymmetricYaw=clamp(asym*3.5*qf,-5,5)
+  yr=approach(yr,turn*.32+yCtrl-beta*.95-yr*.72-ail*1.4*qf+asymmetricYaw+clamp(crosswind*.015,-.9,.9),5.5,dt)
   rr=approach(rr,rCtrl-rr*.58*qf+.25*turbR,7,dt)
-  -- Elevator command now participates in AoA and pitching response; stall-induced loss
-  -- of lift therefore feeds back into vertical performance instead of being purely cosmetic.
   pr=approach(pr,pCtrl-(aoa-(2.5+clamp(flap*1.5,0,1.5)))*.30-clamp(((speedKts-(125+flap*20))/35)*.65,-3.5,3.5)-pr*.35*qf+.25*turbP,5.5,dt)
   x.Sideslip=beta; x.Beta=beta; x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1)
  end
+ x.EngineIntegration.YawRateContribution=ground and 0 or clamp(asym*3.5*qf,-5,5)
+ x.EngineIntegration.StallControlFactor=stallControlFactor
  x.PitchRate=pr; x.RollRate=rr; x.YawRate=yr; x.Yaw=yr; x.Pitch=clamp(pitchAngle+pr*dt,-35,35); x.Roll=clamp(bank+rr*dt,-75,75); x.Heading=wrap(finite(x.Heading,0)+(ground and finite((x.GroundSteering or {}).YawRate,0) or yr)*dt)
  local targetVSMS=math.sin(fpa)*aeroSpeedMS; local vsFpm=finite(x.VerticalSpeed,0); local vsMS=vsFpm*FPM_TO_MS
- -- Vertical force integration: lift opposes weight, while thrust contributes
- -- according to pitch. A bounded damping term keeps the game model stable.
  local verticalForce=(lift*math.cos(math.rad(bank)))+thrust*math.sin(fpa)-weight
  local verticalAccel=clamp(verticalForce/math.max(mass,1),-8,8)
  vsMS+=verticalAccel*dt
