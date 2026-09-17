@@ -1,4 +1,4 @@
--- FlightSim VNAV vertical + speed guidance v1.8
+-- FlightSim VNAV vertical + speed guidance v1.9
 -- Simulation approximation; not a certified FMC/VNAV implementation.
 local VNAV={}; VNAV.__index=VNAV
 local AircraftProfile=require(script.Parent.AircraftProfile)
@@ -18,34 +18,41 @@ local function constraintTarget(wp,cruise,targetFallback)
  if c=="ABOVE" then raw=math.max(raw,minAlt or raw) elseif c=="BELOW" then raw=math.min(raw,maxAlt or raw) end
  return clamp(raw,0,60000),c
 end
-local function downstreamTOD(route,index,aircraftAltitude)
- if not finite(aircraftAltitude) then return nil end
- local totalM=0
+local function downstreamConstraint(route,index,aircraftAltitude,cruise)
+ local totalM=0; local previous=route[index]
+ if not previous or typeof(previous.Position)~="Vector3" then return nil end
  for i=index+1,#route do
-  local previous=route[i-1]; local wp=route[i]
-  if not previous or not wp or typeof(previous.Position)~="Vector3" or typeof(wp.Position)~="Vector3" then break end
+  local wp=route[i]
+  if not wp or typeof(wp.Position)~="Vector3" then break end
   totalM+=distance(previous.Position,wp.Position)
-  local target=tonumber(wp.Altitude)
-  if finite(target) and target<aircraftAltitude then
-   local requiredM=math.max(0,(aircraftAltitude-target)/math.tan(math.rad(3))/FT_PER_M)
-   return math.max(0,totalM-requiredM)
+  local target,c=constraintTarget(wp,cruise,nil)
+  if target then
+   local relevant=(c=="BELOW" and target<aircraftAltitude) or (c=="AT" and target<aircraftAltitude) or (c=="ABOVE" and target>aircraftAltitude)
+   if relevant then return i,target,c,totalM end
   end
+  previous=wp
  end
  return nil
+end
+local function downstreamTOD(route,index,aircraftAltitude,cruise)
+ if not finite(aircraftAltitude) then return nil end
+ local nextIndex,target,c,totalM=downstreamConstraint(route,index,aircraftAltitude,cruise)
+ if not nextIndex or not finite(target) or target>=aircraftAltitude then return nil end
+ local requiredM=math.max(0,(aircraftAltitude-target)/math.tan(math.rad(3))/FT_PER_M)
+ return math.max(0,totalM-requiredM),nextIndex,target,c
 end
 local function safeSpeedBounds(envelope)
  local vmo=tonumber(AircraftProfile.Limits and AircraftProfile.Limits.VMO)
  if not finite(vmo) then vmo=340 end
- local stall=tonumber(envelope.StallSpeedKt)
- local minimum=60
+ local stall=tonumber(envelope.StallSpeedKt); local minimum=60
  if finite(stall) then minimum=math.max(minimum,stall+15) end
  return minimum,math.min(340,vmo)
 end
 function VNAV.new(state) return setmetatable({state=state,lastWaypoint=nil},VNAV) end
 function VNAV:Step(dt)
  local x=self.state:Get(); local nav=x.Navigation or {}; local route=nav.Route or {}; local ap=x.Autopilot or {}; local fmc=x.FMC or {}
- x.VNAV=x.VNAV or {Mode="OFF",Phase="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0,DescentPathAngle=0,CommandVerticalSpeed=nil,ConstraintType=nil,ConstraintAltitude=nil,ConstraintSatisfied=true,TargetSpeed=nil,SpeedConstraintType=nil,SpeedConstraintSatisfied=true,TopOfDescentDistance=nil,GuidanceLimited=false,LimitReason=nil}
- local v=x.VNAV; v.GuidanceLimited=false; v.LimitReason=nil
+ x.VNAV=x.VNAV or {Mode="OFF",Phase="OFF",TargetAltitude=nil,VerticalSpeed=0,PathError=0,DescentPathAngle=0,CommandVerticalSpeed=nil,ConstraintType=nil,ConstraintAltitude=nil,ConstraintSatisfied=true,TargetSpeed=nil,SpeedConstraintType=nil,SpeedConstraintSatisfied=true,TopOfDescentDistance=nil,GuidanceLimited=false,LimitReason=nil,ConstraintLookaheadIndex=nil,NextConstraintAltitude=nil,NextConstraintType=nil}
+ local v=x.VNAV; v.GuidanceLimited=false; v.LimitReason=nil; v.ConstraintLookaheadIndex=nil; v.NextConstraintAltitude=nil; v.NextConstraintType=nil
  if v.Mode~="VNAV" then v.Mode="OFF"; v.Phase="OFF"; v.TargetAltitude=nil; v.VerticalSpeed=0; v.PathError=0; v.CommandVerticalSpeed=nil; v.ConstraintType=nil; v.ConstraintAltitude=nil; v.ConstraintSatisfied=true; v.TargetSpeed=nil; v.SpeedConstraintType=nil; v.SpeedConstraintSatisfied=true; v.TopOfDescentDistance=nil; self.lastWaypoint=nil; return true end
  v.Mode="VNAV"
  local index=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); local wp=route[index]; self.lastWaypoint=index
@@ -56,21 +63,29 @@ function VNAV:Step(dt)
   if constraint=="ABOVE" then v.ConstraintSatisfied=altitude+tolerance>=target elseif constraint=="BELOW" then v.ConstraintSatisfied=altitude-tolerance<=target else v.ConstraintSatisfied=math.abs(altitude-target)<=tolerance end
   v.PathError=target-altitude
  else v.ConstraintSatisfied=true; v.PathError=0 end
+ local downstreamIndex,downstreamTarget,downstreamType,downstreamDistance=downstreamConstraint(route,index,altitude,fmc.CruiseAltitude)
+ v.ConstraintLookaheadIndex=downstreamIndex; v.NextConstraintAltitude=downstreamTarget; v.NextConstraintType=downstreamType
  local distanceToWp=math.max(1,tonumber(nav.DistanceToWaypoint) or 1); local distanceFt=distanceToWp*FT_PER_M; local speed=math.max(60,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 60); local fps=speed*1.68781
  local tod=nil
  if target and altitude>target then
   local requiredM=math.max(0,(altitude-target)/math.tan(math.rad(3))/FT_PER_M); tod=math.max(0,distanceToWp-requiredM)
-  if tod>0 and index<#route then local downstream=downstreamTOD(route,index,altitude); if downstream~=nil then tod=math.max(tod,downstream) end end
- elseif target and altitude<=target then tod=downstreamTOD(route,index,altitude) end
+ elseif target and altitude<=target then
+  tod=downstreamTOD(route,index,altitude,fmc.CruiseAltitude)
+ end
+ if tod==nil and downstreamDistance and downstreamTarget and downstreamTarget<altitude then
+  local requiredM=math.max(0,(altitude-downstreamTarget)/math.tan(math.rad(3))/FT_PER_M); tod=math.max(0,downstreamDistance-requiredM)
+ end
  if target then
   v.TopOfDescentDistance=tod
   if v.PathError>tolerance then v.Phase="CLIMB" elseif v.PathError<-tolerance then v.Phase=(tod==nil or tod<=0) and "DESCENT" or "CRUISE" else v.Phase="ALTITUDE_CAPTURE" end
- else v.Phase="CRUISE"; v.TopOfDescentDistance=nil end
+ else
+  v.Phase=(downstreamTarget and downstreamTarget<altitude and (tod or 0)<=0) and "DESCENT" or "CRUISE"; v.TopOfDescentDistance=tod
+ end
  local pathAngle=0
  if target then
   if v.Phase=="DESCENT" then pathAngle=-math.rad(3) elseif v.Phase=="CLIMB" then pathAngle=math.atan2(v.PathError,distanceFt) else pathAngle=math.atan2(v.PathError,math.max(distanceFt,3040)) end
   pathAngle=clamp(pathAngle,-math.rad(6),math.rad(6))
- end
+ elseif downstreamTarget and downstreamTarget<altitude and (tod or 0)<=0 then pathAngle=-math.rad(3) end
  local desiredVS=math.tan(pathAngle)*fps*60
  if distanceToWp<1000 then desiredVS=clamp(desiredVS,-800,800) elseif distanceToWp<5000 then desiredVS=clamp(desiredVS,-1800,1800) else desiredVS=clamp(desiredVS,-2500,2500) end
  if v.Phase=="CRUISE" or math.abs(v.PathError)<75 then desiredVS=clamp(v.PathError*0.08,-800,800) end
