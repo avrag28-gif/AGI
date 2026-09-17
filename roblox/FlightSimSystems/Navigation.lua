@@ -1,4 +1,4 @@
--- FlightSim navigation / LNAV / VOR / ILS guidance v1.3
+-- FlightSim navigation / LNAV / VOR / ILS guidance v1.4
 -- Simulation approximation; procedure coding and certified nav databases are outside this layer.
 local Navigation={}; Navigation.__index=Navigation
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -14,14 +14,20 @@ local function velocityTrack(v)
  if dx*dx+dz*dz<1 then return nil end
  return wrap360(math.deg(math.atan2(dx,dz)))
 end
+local function groundSpeed(v)
+ local horizontalSquared=v.X*v.X+v.Z*v.Z
+ return math.sqrt(math.max(horizontalSquared,0))/0.514444
+end
 function Navigation.new(state) return setmetatable({state=state},Navigation) end
 function Navigation:Step(dt)
  local x=self.state:Get(); local nav=x.Navigation; if not nav then return end
  nav.CommandHeading=nil; nav.CommandAltitude=nil; nav.CommandVerticalSpeed=nil
  local route=nav.Route or {}; local i=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); local wp=route[i]
  local pos=typeof(x.Position)=="Vector3" and x.Position or Vector3.zero
- local track=velocityTrack(typeof(x.Velocity)=="Vector3" and x.Velocity or Vector3.zero)
+ local velocity=typeof(x.Velocity)=="Vector3" and x.Velocity or Vector3.zero
+ local track=velocityTrack(velocity)
  nav.GroundTrack=track
+ nav.GroundSpeed=groundSpeed(velocity)
  local heading=finite(x.Heading) and wrap360(x.Heading) or 0
  if wp and typeof(wp.Position)=="Vector3" then
   local prev=route[i-1]; nav.DistanceToWaypoint=distance2D(pos,wp.Position); nav.BearingToWaypoint=bearing(pos,wp.Position)
