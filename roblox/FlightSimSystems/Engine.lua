@@ -1,6 +1,6 @@
--- FlightSim engine runtime module v1.0
+-- FlightSim engine runtime module v1.1
 -- Simulation approximation. FuelFlow is expressed as kg/min and is consumed by Fuel.lua.
--- CFM56-7B26 thrust rating is aircraft-profile data; the flow curve below is simulator tuning.
+-- CFM56-7B26 thrust rating is aircraft-profile data; the performance curve below is simulator tuning.
 local Config = require(script.Parent.Config)
 local Engine = {}
 Engine.__index = Engine
@@ -10,6 +10,36 @@ local function approach(value, target, rate, dt)
 	local step = math.max(0, rate) * dt
 	if math.abs(delta) <= step then return target end
 	return value + (delta > 0 and step or -step)
+end
+
+local function clamp(v, a, b)
+	return math.max(a, math.min(b, v))
+end
+
+local function finite(v, fallback)
+	v = tonumber(v)
+	if v and v == v and v ~= math.huge and v ~= -math.huge then
+		return v
+	end
+	return fallback
+end
+
+local function isaTemperatureC(altitudeFt)
+	-- ISA troposphere approximation, adequate for this game-simulation layer.
+	return 15 - 1.9812 * math.max(0, altitudeFt) / 1000
+end
+
+local function thrustAvailableFactor(altitudeFt, ambientTempC, mach)
+	-- Deliberately a smooth simulator approximation, not an engine-deck lookup.
+	-- It captures the dominant trend: less available thrust with altitude and
+	-- hot-day conditions, with a small ram-recovery benefit at speed.
+	local altitude = clamp(math.max(0, altitudeFt) / 41000, 0, 1)
+	local pressureFactor = math.exp(-1.15 * altitude)
+	local isa = isaTemperatureC(altitudeFt)
+	local hotPenalty = clamp(1 - math.max(0, ambientTempC - isa) * 0.006, 0.72, 1)
+	local coldBenefit = clamp(1 + math.max(0, isa - ambientTempC) * 0.0015, 0.97, 1.04)
+	local ram = clamp(1 + clamp(mach, 0, 0.82) * 0.12, 1, 1.10)
+	return clamp(pressureFactor * hotPenalty * coldBenefit * ram, 0.18, 1.05)
 end
 
 function Engine.new(state)
@@ -22,12 +52,18 @@ function Engine:Step(dt)
 	local fuelSystem = x.FuelSystem or {}
 	local failures = x.Failures and x.Failures.Engines or {}
 	local antiIce = x.AntiIce or {}
+	local environment = x.Environment or {}
+	local weather = x.WeatherEffects or {}
+	local altitudeFt = math.max(0, finite(x.Altitude, 0))
+	local ambientTempC = finite(environment.TemperatureC, finite(weather.TemperatureC, 15 - 1.9812 * altitudeFt / 1000))
+	local mach = clamp(finite(x.Mach, (finite(x.Airspeed, 0) / 661.47)), 0, 0.90)
+	local availableFactor = thrustAvailableFactor(altitudeFt, ambientTempC, mach)
 
 	for index = 1, 2 do
 		local e = x.Engines[index]
 		local failure = failures[index]
-		local throttle = math.clamp(tonumber((x.Throttle or {})[index]) or 0, 0, 1)
-		local fuelAvailable = (x.Fuel and x.Fuel.Total or 0) > 0
+		local throttle = clamp(finite((x.Throttle or {})[index], 0), 0, 1)
+		local fuelAvailable = finite((x.Fuel or {}).Total, 0) > 0
 		local fuelPathAvailable = fuelSystem.EngineFuelAvailable ~= nil and fuelSystem.EngineFuelAvailable[index] == true
 
 		if failure and failure.Active then
@@ -72,17 +108,16 @@ function Engine:Step(dt)
 			e.EGT = approach(e.EGT, targetEGT, 220, dt)
 			e.OilPressure = approach(e.OilPressure, 35 + 60 * (e.N2 / 100), 55, dt)
 
-			-- kg/min simulation flow. This is deliberately a tuning curve, not a certified
-			-- CFM56 fuel-flow schedule. It stays in a plausible order of magnitude for
-			-- a twin-engine 737 simulation instead of the previous thousands of kg/min.
-			local n1Fraction = math.clamp(e.N1 / 100, 0, 1)
+			local n1Fraction = clamp(e.N1 / 100, 0, 1)
 			local idleFlow = 18
 			local additionalFlow = 90 * (n1Fraction ^ 1.35)
 			e.FuelFlow = idleFlow + additionalFlow * (0.65 + 0.35 * throttle)
 
-			local penalty = tonumber(antiIce.EnginePenalty and antiIce.EnginePenalty[index]) or 1
-			penalty = math.clamp(penalty, 0.85, 1)
-			e.Thrust = (e.N1 / 100) * (Config.MaxThrust / 2) * penalty
+			local penalty = finite(antiIce.EnginePenalty and antiIce.EnginePenalty[index], 1)
+			penalty = clamp(penalty, 0.85, 1)
+			local ratedThrust = Config.MaxThrust / 2
+			e.AvailableThrustFactor = availableFactor
+			e.Thrust = (e.N1 / 100) * ratedThrust * availableFactor * penalty
 			e.GeneratorAvailable = e.N2 >= 50
 		else
 			e.N1 = approach(e.N1, 0, 18, dt)
@@ -90,6 +125,7 @@ function Engine:Step(dt)
 			e.OilPressure = approach(e.OilPressure, 0, 45, dt)
 			e.FuelFlow = 0
 			e.Thrust = 0
+			e.AvailableThrustFactor = availableFactor
 			e.GeneratorAvailable = false
 			if e.StartFailed and e.N2 < 8 then
 				e.Starter = false
