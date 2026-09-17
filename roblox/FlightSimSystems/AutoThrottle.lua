@@ -1,4 +1,4 @@
--- FlightSim autothrottle speed-management controller v0.7
+-- FlightSim autothrottle speed-management controller v0.8
 -- Closed-loop game simulation; not certified Boeing autothrottle logic.
 local Config=require(script.Parent.Config)
 local AutoThrottle={}; AutoThrottle.__index=AutoThrottle
@@ -29,18 +29,24 @@ end
 function AutoThrottle:Step(dt)
  local x=self.state:Get(); local ap=x.Autopilot or {}; local v=x.VNAV or {}; local a=x.AutoThrottle or {}
  x.AutoThrottle=a; x.Throttle=x.Throttle or {[1]=0,[2]=0}; a.ThrottleCommand=a.ThrottleCommand or {[1]=0,[2]=0}; a.Active=false; a.Protection=a.Protection or "NONE"
- -- A stall or overspeed is an envelope condition, not a reason to blindly
- -- command more thrust. Leave the throttle where it is during stall-active;
- -- use maximum available thrust only for an underspeed condition below stall.
+ local envelope=x.FlightEnvelope or {}
  local speed=math.max(0,tonumber(x.IndicatedAirspeed) or tonumber(x.Airspeed) or 0)
+ -- Envelope protection must consume the same explicit VMO/MMO flags that the
+ -- envelope calculator generated. Do not infer VMO overspeed from raw TAS here.
+ local vmoOverspeed=envelope.VMOOverspeed==true
+ local mmoOverspeed=envelope.MMOOverspeed==true
  if x.StallActive==true then
   a.Active=false; a.Mode="ENVELOPE_STALL"; a.Protection="STALL_ACTIVE"; a.SpeedError=0
   a.ThrottleCommand[1]=x.Throttle[1] or 0; a.ThrottleCommand[2]=x.Throttle[2] or 0
   return true
  end
- if x.OverspeedWarning==true and ap.GoAround~=true then
-  a.Active=false; a.Mode="ENVELOPE_OVERSPEED"; a.Protection="OVERSPEED"; a.SpeedError=0
-  a.ThrottleCommand[1]=slew(tonumber(a.ThrottleCommand[1]) or 0,0,0.7,dt); a.ThrottleCommand[2]=slew(tonumber(a.ThrottleCommand[2]) or 0,0,0.7,dt)
+ if (vmoOverspeed or mmoOverspeed) and ap.GoAround~=true then
+  a.Active=false
+  a.Mode=vmoOverspeed and "ENVELOPE_VMO" or "ENVELOPE_MMO"
+  a.Protection=vmoOverspeed and "VMO_OVERSPEED" or "MMO_OVERSPEED"
+  a.SpeedError=0
+  a.ThrottleCommand[1]=slew(tonumber(a.ThrottleCommand[1]) or 0,0,0.7,dt)
+  a.ThrottleCommand[2]=slew(tonumber(a.ThrottleCommand[2]) or 0,0,0.7,dt)
   x.Throttle[1]=a.ThrottleCommand[1]; x.Throttle[2]=a.ThrottleCommand[2]
   return true
  end
@@ -59,7 +65,11 @@ function AutoThrottle:Step(dt)
  if not selected then
   a.Enabled=false; a.TargetSpeed=nil; a.SpeedError=0; a.Mode="OFF"; a.Protection="NONE"; a.ThrottleCommand[1]=x.Throttle[1] or 0; a.ThrottleCommand[2]=x.Throttle[2] or 0; return true
  end
- selected=clamp(selected,60,350)
+ -- A selected speed above the aircraft VMO is not a valid target for this
+ -- simulation profile. Keep normal speed control below the structural limit;
+ -- MMO remains an independent high-altitude protection gate.
+ local vmo=finite(envelope.VMO) and envelope.VMO or 340
+ selected=clamp(selected,60,math.min(350,vmo))
  local controlTarget=selected
  if constraint=="ABOVE" and speed>=selected then controlTarget=speed elseif constraint=="BELOW" and speed<=selected then controlTarget=speed end
  local error=selected-speed
@@ -74,8 +84,6 @@ function AutoThrottle:Step(dt)
  local left=x.Engines and x.Engines[1]; local right=x.Engines and x.Engines[2]; local leftAvailable=engineAvailable(left); local rightAvailable=engineAvailable(right)
  if not leftAvailable and not rightAvailable then a.Enabled=false; a.Mode="NO_ENGINE"; a.Active=false; a.TargetSpeed=selected; a.SpeedError=error; a.Protection="NO_ENGINE"; return true end
  local availableCount=(leftAvailable and 1 or 0)+(rightAvailable and 1 or 0)
- -- Never turn a speed command into a throttle command larger than the
- -- physical engine availability represented by this simulation state.
  local leftFraction=engineFraction(left); local rightFraction=engineFraction(right)
  local minimumAvailable=math.max(leftFraction,rightFraction)
  if raw>0 and minimumAvailable<0.02 then raw=0 end
