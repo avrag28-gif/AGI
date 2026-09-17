@@ -11,7 +11,7 @@ end
 local function removeAircraftForPlayer(player) local id="P_"..tostring(player.UserId); local s=simulations[id]; if s and s.atcRunway then s.atcRunway:Release() end; registry:Unregister(id); simulations[id]=nil end
 Players.PlayerAdded:Connect(createAircraftForPlayer); Players.PlayerRemoving:Connect(removeAircraftForPlayer); for _,p in Players:GetPlayers() do createAircraftForPlayer(p) end
 local commandRemote=remotes:FindFirstChild("AircraftCommand"); if commandRemote then commandRemote.OnServerEvent:Connect(function(player,command,a,b) local id=registry:GetForPlayer(player); if not id then return end; local ok,reason=router:Handle(player,id,command,a,b); if not ok then warn("[FlightSim] rejected command",player.Name,reason) end end) end
-local accumulator,telemetryAccumulator=0,0; local fixedStep=1/(tonumber(Config.SimulationRate) or 60)
+local accumulator,telemetryAccumulator=0,0; local fixedStep=1/(tonumber(Config.SimulationRate) or 60); local maxSubsteps=8
 local function updateTrafficSystems() separation:Step(); decisions:Step(); registry:ForEach(function(id,state) local x=state:Get(); local d=decisions:Get(id); if d then x.ATCDecision.Instruction=d.Instruction; x.ATCDecision.ConflictWith=d.ConflictWith; x.ATCDecision.DistanceM=d.DistanceM; x.ATCDecision.VerticalSeparationFt=d.VerticalSeparationFt else x.ATCDecision.Instruction="NONE"; x.ATCDecision.ConflictWith=nil; x.ATCDecision.DistanceM=nil; x.ATCDecision.VerticalSeparationFt=nil end end); registry:ForEach(function(id) tcas:Step(id); local sim=simulations[id]; if sim and sim.trafficDisplay then sim.trafficDisplay:Step() end end) end
 local function simulationStep(dt) registry:ForEach(function(id) local s=simulations[id]; if not s then return end
   -- Dependency order: failures/APU establish availability, electrical resolves source buses,
@@ -19,5 +19,12 @@ local function simulationStep(dt) registry:ForEach(function(id) local s=simulati
   s.failures:Step(dt); s.apu:Step(dt); s.fuel:Step(dt); s.electrical:Step(dt); s.engine:Step(dt); s.fireProtection:Step(dt); s.core:Step(dt); s.avionics:Step(dt); s.radio:Step(dt); s.environment:Step(dt); s.weatherPhysics:Step(dt); s.weatherRadar:Step(dt); s.bleedAir:Step(dt); s.pressurization:Step(dt); s.antiIce:Step(dt); s.atc:Step(dt); s.atcRunway:Step(dt); s.fmc:Step(dt); s.mcp:Step(dt); s.approach:Step(dt); s.vor:Step(dt); s.navReceiver:Step(dt); s.navigation:Step(dt); s.vnav:Step(dt); s.autopilot:Step(dt); s.autothrottle:Step(dt); s.trim:Step(dt); s.flaps:Step(dt); s.flightControls:Step(dt); s.landingGear:Step(dt); s.brakes:Step(dt); s.hydraulic:Step(dt); s.groundSteering:Step(dt); s.transponder:Step(dt); s.physics:Step(dt); s.landing:Step(dt); s.landingDynamics:Step(dt); s.annunciation:Step(dt)
   local ok,errors=integrity:Check(s.state); if not ok then for _,e in ipairs(errors) do warn("[FlightSim][StateIntegrity]",id,e.Code,e.Message) end end
  end); updateTrafficSystems() end
-RunService.Heartbeat:Connect(function(frameDt) frameDt=math.min(frameDt,0.25); accumulator+=frameDt; while accumulator>=fixedStep do simulationStep(fixedStep); accumulator-=fixedStep end; telemetryAccumulator+=frameDt; if telemetryAccumulator>=1/(tonumber(Config.TelemetryRate) or 20) then telemetryAccumulator=0; local t=remotes:FindFirstChild("Telemetry"); if t then registry:ForEach(function(_,state,owner) if owner then t:FireClient(owner,state:Get()) end end) end end end)
+RunService.Heartbeat:Connect(function(frameDt)
+ frameDt=math.min(tonumber(frameDt) or 0,0.25); accumulator+=frameDt
+ local steps=0
+ while accumulator>=fixedStep and steps<maxSubsteps do simulationStep(fixedStep); accumulator-=fixedStep; steps+=1 end
+ -- Prevent a lag spike from creating an unbounded catch-up spiral that monopolizes the scheduler.
+ if steps>=maxSubsteps and accumulator>fixedStep*maxSubsteps then accumulator=fixedStep*0.5 end
+ telemetryAccumulator+=frameDt; if telemetryAccumulator>=1/(tonumber(Config.TelemetryRate) or 20) then telemetryAccumulator=0; local t=remotes:FindFirstChild("Telemetry"); if t then registry:ForEach(function(_,state,owner) if owner then t:FireClient(owner,state:Get()) end end) end end
+end)
 print("[FlightSim] Modular runtime online",Config.Aircraft or "Unknown aircraft")
