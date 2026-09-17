@@ -1,8 +1,9 @@
--- FlightSim aerodynamic / ground dynamics foundation v3.0
+-- FlightSim aerodynamic / ground dynamics foundation v3.1
 -- Game-simulation model; coefficients are tunable approximations, not certified aircraft data.
 -- State units: Airspeed=kt, Altitude=ft, VerticalSpeed=ft/min, Position/Velocity=game-space meters.
 local Config=require(script.Parent.Config)
 local WeightBalance=require(script.Parent.WeightBalance)
+local FlightEnvelope=require(script.Parent.FlightEnvelope)
 local Physics={}; Physics.__index=Physics
 local FT_TO_M=0.3048
 local FPM_TO_MS=FT_TO_M/60
@@ -48,6 +49,7 @@ function Physics:Step(dt)
  x.AirDensityKgM3=rho
  local icingDrag=clamp(finite(weather.IcingDragFactor,1),1,1.12); local icingLift=clamp(finite(weather.IcingLiftFactor,1),0.88,1); local crosswind=clamp(finite(weather.CrosswindKts,0),-80,80); local turbP=clamp(finite(weather.TurbulencePitch,0),-1.5,1.5); local turbR=clamp(finite(weather.TurbulenceRoll,0),-1.5,1.5)
  local weightData=WeightBalance.Step(x); local mass=math.max(weightData.GrossMassKg,1); local weight=mass*G
+ local envelope=FlightEnvelope.Step(x)
  local throttle=(clamp(finite((x.Throttle or {})[1],0),0,1)+clamp(finite((x.Throttle or {})[2],0),0,1))*0.5
  local lt=math.max(finite(e1.Thrust,0),0); local rt=math.max(finite(e2.Thrust,0),0); local thrust=lt+rt; local ground=x.GroundContact==true; local flap=clamp(finite(s.Flap,0),0,1); local gear=x.GearPosition or {}; local gearExposed=clamp((finite(gear.Nose,0)+finite(gear.Left,0)+finite(gear.Right,0))/3,0,1)
  local brakes=x.Brakes or {}; local brake=clamp(finite(brakes.BrakePressure,0),0,1); local lp=clamp(finite(brakes.LeftPressure,brake),0,1); local rp=clamp(finite(brakes.RightPressure,brake),0,1); local reverse=ground and clamp(finite(x.ReverseThrust,0),0,1) or 0
@@ -61,7 +63,7 @@ function Physics:Step(dt)
  local reverseForce=ground and reverse*thrust*1.25*clamp(speedKts/35,0,1) or 0
  local longitudinal=thrust-drag-wheelBrake-reverseForce
  if ground and speedKts<25 and throttle<0.05 and brake<0.05 and reverse<0.05 then longitudinal-=0.8*mass end
- local accel=longitudinal/math.max(mass,1); x.Airspeed=clamp(speedKts+accel*1.94384*dt,0,Config.MaxAirspeed); x.DynamicPressure=q; x.Lift=lift; x.Drag=drag; x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor; x.AoA=aoa; x.StallWarning=math.abs(aoa)>=13 and speedKts>45
+ local accel=longitudinal/math.max(mass,1); x.Airspeed=clamp(speedKts+accel*1.94384*dt,0,Config.MaxAirspeed); x.DynamicPressure=q; x.Lift=lift; x.Drag=drag; x.LoadFactor=lift/math.max(weight,1); x.GLoad=x.LoadFactor; x.AoA=aoa; x.StallWarning=envelope.StallWarning or math.abs(aoa)>=13 and speedKts>45; x.StallActive=envelope.StallActive or stall>=1; x.OverspeedWarning=envelope.Overspeed
  local qf=clamp(effectiveAirspeed/140,0.12,1.2); local ail=clamp(finite(s.Aileron,0),-1,1); local ele=clamp(finite(s.Elevator,0),-1,1); local rud=clamp(finite(s.Rudder,0),-1,1)
  local pCtrl=ele*9*qf; local rCtrl=ail*28*qf; local yCtrl=rud*9*qf
  local pr=finite(x.PitchRate,0); local rr=finite(x.RollRate,0); local yr=finite(x.YawRate,0); local bank=clamp(finite(x.Roll,0),-70,70)
