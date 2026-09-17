@@ -1,8 +1,11 @@
--- FlightSim hydraulic system v1.3
--- State contract: Hydraulic.A/B/Standby are structured hydraulic-system records.
--- The standby system is modeled as an electrically driven alternate source.
--- Primary-system demand is reported by consumers; standby demand is derived when
--- a primary system is unavailable and a supported control demand exists.
+-- FlightSim hydraulic system v1.4
+-- Simulation approximation of the 737-800 hydraulic architecture.
+-- Primary demand is allocated by consumer instead of loading both systems identically:
+--   * Flight controls contribute to their respective A/B channels.
+--   * Landing gear demand is assigned to System A.
+--   * Normal brake demand is assigned to System B; System A is used as the alternate source
+--     when B is unavailable.
+--   * Standby demand is derived only for supported flight-control demand.
 local Hydraulic={}; Hydraulic.__index=Hydraulic
 
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -44,8 +47,18 @@ function Hydraulic:Step(dt)
 	local brakes=clamp(tonumber(raw.Brakes) or 0,0,1)
 	local controlA=clamp(tonumber(raw.FlightControlsA) or fc,0,1)
 	local controlB=clamp(tonumber(raw.FlightControlsB) or fc,0,1)
-	local demandA=clamp(controlA+gear*0.30+brakes*0.20,0,1)
-	local demandB=clamp(controlB+gear*0.30+brakes*0.20,0,1)
+
+	-- Allocate demand by the consumer's primary hydraulic source instead of duplicating
+	-- every load onto both systems. This prevents gear/brake activity from artificially
+	-- draining both systems and gives failures a meaningful alternate-source behavior.
+	local primaryAUnavailable=(f.A==true) or not A.Available
+	local primaryBUnavailable=(f.B==true) or not B.Available
+	local gearDemandA=gear
+	local brakeDemandB=brakes
+	local alternateBrakeDemandA=(primaryBUnavailable and brakes>0) and brakes or 0
+
+	local demandA=clamp(controlA+gearDemandA*0.30+alternateBrakeDemandA*0.20,0,1)
+	local demandB=clamp(controlB+brakeDemandB*0.20,0,1)
 
 	local function stepSystem(system,engineSource,electricSource,failed,demand)
 		system.EnginePump=engineSource
@@ -74,13 +87,8 @@ function Hydraulic:Step(dt)
 	if explicitStandby>0 then
 		standbyDemand=clamp(explicitStandby,0,1)
 	else
-		local primaryUnavailableA=(f.A==true) or not A.Available
-		local primaryUnavailableB=(f.B==true) or not B.Available
-		if (primaryUnavailableA or primaryUnavailableB) and fc>0 then
-			standbyDemand=fc
-		else
-			standbyDemand=0
-		end
+		local standbyRequired=((f.A==true) or not A.Available or (f.B==true) or not B.Available) and fc>0
+		standbyDemand=standbyRequired and fc or 0
 	end
 
 	standby.EnginePump=false
@@ -95,6 +103,9 @@ function Hydraulic:Step(dt)
 	raw.A=demandA
 	raw.B=demandB
 	raw.Standby=standbyDemand
+	raw.GearA=gearDemandA
+	raw.BrakesB=brakeDemandB
+	raw.BrakesAlternateA=alternateBrakeDemandA
 
 	x.HydraulicState=x.HydraulicState or {}
 	local hs=x.HydraulicState
@@ -109,7 +120,18 @@ function Hydraulic:Step(dt)
 	hs.FailureB=f.B==true
 	hs.DemandA=demandA
 	hs.DemandB=demandB
-	hs.DemandBreakdown={FlightControls=fc,FlightControlsA=controlA,FlightControlsB=controlB,LandingGear=gear,Brakes=brakes,Total=raw.Total,Standby=standbyDemand}
+	hs.DemandBreakdown={
+		FlightControls=fc,
+		FlightControlsA=controlA,
+		FlightControlsB=controlB,
+		LandingGear=gear,
+		GearA=gearDemandA,
+		Brakes=brakes,
+		BrakesB=brakeDemandB,
+		BrakesAlternateA=alternateBrakeDemandA,
+		Total=raw.Total,
+		Standby=standbyDemand,
+	}
 	hs.SourceA=(f.A==true and "FAILED") or (running1 and bus1 and "ENG1+ELEC") or (running1 and "ENG1") or (bus1 and "ELEC") or "NONE"
 	hs.SourceB=(f.B==true and "FAILED") or (running2 and bus2 and "ENG2+ELEC") or (running2 and "ENG2") or (bus2 and "ELEC") or "NONE"
 	hs.SourceStandby=(standby.ElectricPump and "ELECTRIC") or "NONE"
