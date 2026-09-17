@@ -1,4 +1,4 @@
--- FlightSim FMC/CDU data model v0.4
+-- FlightSim FMC/CDU data model v0.5
 -- Validates route data and exposes active-leg/progress data for VNAV and navigation.
 local FMC={}; FMC.__index=FMC
 local MAX_WAYPOINTS=64; local MAX_IDENT=8
@@ -18,8 +18,23 @@ local function copyWaypoint(w)
 end
 function FMC.new(state) return setmetatable({state=state,page="IDENT",scratch=""},FMC) end
 function FMC:Step(dt)
- local x=self.state:Get(); x.FMC=x.FMC or {}; local f=x.FMC; local nav=x.Navigation or {}
- f.Page=f.Page or self.page; f.Scratchpad=f.Scratchpad or self.scratch; f.ActiveWaypoint=math.max(1,math.floor(tonumber(nav.ActiveWaypoint) or 1)); f.RouteComplete=nav.RouteComplete==true; f.Active=(#(f.Route or {})>0) and not f.RouteComplete
+ local x=self.state:Get(); x.FMC=x.FMC or {}; local f=x.FMC; local nav=x.Navigation or {}; local route=f.Route or nav.Route or {}
+ local index=math.clamp(math.floor(tonumber(nav.ActiveWaypoint) or 1),1,math.max(1,#route))
+ f.Page=f.Page or self.page; f.Scratchpad=f.Scratchpad or self.scratch; f.ActiveWaypoint=index; f.LegIndex=index; f.RouteComplete=nav.RouteComplete==true; f.Active=(#route>0) and not f.RouteComplete
+ local previous=route[index-1]; local active=route[index]; local next=route[index+1]
+ f.PreviousWaypoint=previous and previous.Ident or nil
+ f.ActiveWaypointIdent=active and active.Ident or nil
+ f.NextWaypoint=next and next.Ident or nil
+ f.ActiveLeg={
+  Index=index,
+  PreviousIdent=f.PreviousWaypoint,
+  ActiveIdent=f.ActiveWaypointIdent,
+  NextIdent=f.NextWaypoint,
+  Distance=finite(nav.DistanceToWaypoint) and nav.DistanceToWaypoint or 0,
+  Bearing=finite(nav.BearingToWaypoint) and nav.BearingToWaypoint or 0,
+  CrossTrackError=finite(nav.CrossTrackError) and nav.CrossTrackError or 0,
+  RouteComplete=f.RouteComplete,
+ }
 end
 function FMC:SetPage(page) local p=string.upper(string.sub(tostring(page or "IDENT"),1,16)); local allowed={IDENT=true,RTE=true,LEGS=true,DEPARR=true,PERF=true,PROG=true,NAVRAD=true}; if not allowed[p] then return false,"invalid_page" end; local x=self.state:Get(); x.FMC=x.FMC or {}; x.FMC.Page=p; self.page=p; return true end
 function FMC:SetScratchpad(text) local x=self.state:Get(); x.FMC=x.FMC or {}; x.FMC.Scratchpad=string.upper(string.sub(tostring(text or ""),1,80)); self.scratch=x.FMC.Scratchpad; return true end
