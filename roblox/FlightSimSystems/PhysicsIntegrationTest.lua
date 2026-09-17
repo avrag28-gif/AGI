@@ -1,4 +1,4 @@
--- Physics force-integration regression tests v0.2
+-- Physics force-integration regression tests v0.3
 local State=require(script.Parent.State)
 local Physics=require(script.Parent.Physics)
 local function check(ok,msg) assert(ok,msg) end
@@ -17,12 +17,10 @@ local function baseState()
  return s
 end
 local function run()
- -- Both engines operating must not be classified as an engine-out merely from thrust.
  local balanced=baseState()
  Physics.new(balanced):Step(1/60)
  check(balanced.EngineIntegration.EngineOut==false,"two running engines must not be flagged engine-out merely because thrust is low")
 
- -- A genuine asymmetric engine availability state must be detected.
  local failed=baseState()
  failed.Engines[2].Running=false
  failed.Engines[2].Thrust=0
@@ -30,7 +28,6 @@ local function run()
  check(failed.EngineIntegration.EngineOut==true,"one running engine and one stopped engine must flag engine-out")
  check(math.abs(failed.EngineIntegration.YawRateContribution)<=5,"engine-out yaw contribution must remain bounded")
 
- -- A climb angle must consume longitudinal energy through gravity.
  local level=baseState()
  level.Pitch=0
  local climb=baseState()
@@ -39,7 +36,6 @@ local function run()
  Physics.new(climb):Step(1/60)
  check(climb.Airspeed<level.Airspeed,"positive flight-path angle must reduce longitudinal acceleration through gravity")
 
- -- Vertical force integration must respond to lift/weight imbalance.
  local lowLift=baseState()
  lowLift.Airspeed=90
  lowLift.WeatherEffects.EffectiveAirspeed=90
@@ -48,8 +44,6 @@ local function run()
  Physics.new(lowLift):Step(1/60)
  check(lowLift.VerticalSpeed<0,"lift below weight must produce downward vertical acceleration")
 
- -- High AoA/stall must reduce aerodynamic control authority rather than only
- -- triggering an annunciation while leaving roll/yaw/pitch moments unchanged.
  local normal=baseState()
  normal.Surface.Aileron=1
  normal.AoA=8
@@ -61,6 +55,16 @@ local function run()
  Physics.new(stallState):Step(1/60)
  check(stallState.EngineIntegration.StallControlFactor<normal.EngineIntegration.StallControlFactor,"stall must reduce aerodynamic control effectiveness")
  check(math.abs(stallState.RollRate)<normalRoll,"stall must reduce aileron roll response")
+
+ -- Yaw is an attitude angle, while YawRate is angular rate. They must not
+ -- share the same state value.
+ local yawState=baseState()
+ yawState.Yaw=10
+ yawState.Heading=10
+ yawState.Surface.Rudder=1
+ Physics.new(yawState):Step(1/60)
+ check(math.abs(yawState.Yaw-10)>0.0001,"yaw attitude must integrate from yaw rate")
+ check(math.abs(yawState.Yaw-yawState.YawRate)>0.0001,"yaw angle must not be overwritten with yaw rate")
  return true
 end
 return {Run=run}
