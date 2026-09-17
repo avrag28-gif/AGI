@@ -1,25 +1,27 @@
--- FlightSim takeoff / landing state machine v0.5
+-- FlightSim takeoff / landing state machine v0.6
 -- LandingModel owns phase/flare state; LandingDynamics owns touchdown contact/event classification.
+-- Normal ground/rollout state is based on actual wheel contact, not raw GroundContact.
 local LandingModel={}; LandingModel.__index=LandingModel
-function LandingModel.new(state) return setmetatable({state=state,lastGround=nil,flareActive=false,initialized=false},LandingModel) end
+function LandingModel.new(state) return setmetatable({state=state,lastWheelContact=nil,flareActive=false,initialized=false},LandingModel) end
 function LandingModel:Step(dt)
  local x=self.state:Get(); local l=x.Landing or {}; local gear=x.GearStatus or {}; local down=gear.DownLocked==true
  local speed=math.max(tonumber(x.Airspeed) or 0,0); local agl=math.max(tonumber(x.Altitude) or 0,0); local vs=tonumber(x.VerticalSpeed) or 0
- local onGround=x.GroundContact==true; local goAround=l.GoAround==true
+ local rawGround=x.GroundContact==true; local wheelContact=rawGround and down; local goAround=l.GoAround==true
+ local d=math.max(tonumber(dt) or 0,0)
  if not self.initialized then
-  self.lastGround=onGround; self.initialized=true
+  self.lastWheelContact=wheelContact; self.initialized=true
   l.Takeoff=false; l.Flare=false
-  l.Phase=onGround and (speed<5 and "GROUND" or "ROLLOUT") or (goAround and "GO_AROUND" or "AIRBORNE")
-  l.Rollout=onGround and speed>=5
+  l.Phase=wheelContact and (speed<5 and "GROUND" or "ROLLOUT") or (goAround and "GO_AROUND" or "AIRBORNE")
+  l.Rollout=wheelContact and speed>=5
   self.flareActive=false
   return true
  end
  l.Takeoff=false; l.Flare=false
- if onGround then
+ if wheelContact then
   if speed<5 then l.Phase="GROUND"; l.Rollout=false
   else l.Phase="ROLLOUT"; l.Rollout=true end
   self.flareActive=false
- elseif self.lastGround then
+ elseif self.lastWheelContact then
   l.Takeoff=true; l.Phase=goAround and "GO_AROUND" or "AIRBORNE"; l.Rollout=false; self.flareActive=false
  else
   if goAround then
@@ -36,7 +38,7 @@ function LandingModel:Step(dt)
    end
   end
  end
- self.lastGround=onGround
+ self.lastWheelContact=wheelContact
  return true
 end
 return LandingModel
