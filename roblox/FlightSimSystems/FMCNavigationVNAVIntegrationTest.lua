@@ -1,4 +1,4 @@
--- FlightSim FMC -> Navigation -> VNAV integration tests v0.1
+-- FlightSim FMC -> Navigation -> VNAV integration tests v0.2
 -- Source-level tests; these are not Roblox runtime execution tests.
 local FMC=require(script.Parent.FMC)
 local Navigation=require(script.Parent.Navigation)
@@ -21,9 +21,13 @@ local function run()
  check(#s.data.FMC.Route==2,"FMC must retain the cleaned route")
  check(#s.data.Navigation.Route==2,"FMC must publish the route to navigation")
  check(s.data.Navigation.ActiveWaypoint==1,"FMC must reset the active waypoint")
+ f:Step(1/60)
+ check(s.data.FMC.ActiveWaypoint==1,"FMC must initially mirror the navigation active waypoint")
  n:Step(1/60)
  check(s.data.Navigation.DistanceToWaypoint>0,"navigation must calculate distance to the active waypoint")
  check(s.data.Navigation.BearingToWaypoint==90,"navigation must calculate the route bearing")
+ f:Step(1/60)
+ check(s.data.FMC.ActiveWaypoint==1,"FMC must remain synchronized while the active leg is unchanged")
  v:Step(1/60)
  check(s.data.VNAV.TargetAltitude==30000,"VNAV must consume the FMC route altitude through Navigation")
  check(s.data.VNAV.TargetSpeed==250,"VNAV must consume the FMC route speed through Navigation")
@@ -32,11 +36,19 @@ local function run()
  check(s.data.VNAV.Phase=="CLIMB","the first higher constraint must produce climb guidance")
  s.data.Navigation.ActiveWaypoint=2
  n:Step(1/60)
+ f:Step(1/60)
+ check(s.data.FMC.ActiveWaypoint==2,"FMC must immediately mirror a Navigation waypoint transition")
  v:Step(1/60)
  check(s.data.VNAV.TargetAltitude==12000,"VNAV must follow Navigation waypoint transitions")
  check(s.data.VNAV.TargetSpeed==180,"VNAV must follow the new waypoint speed")
  check(s.data.VNAV.Phase=="CRUISE","VNAV must remain in cruise before the descent TOD")
  check(s.data.VNAV.TopOfDescentDistance>0,"VNAV must publish a positive TOD before descent")
+ s.data.Position=Vector3.new(100000,0,0)
+ n:Step(1/60)
+ f:Step(1/60)
+ check(s.data.Navigation.RouteComplete==true,"navigation must mark the final waypoint complete")
+ check(s.data.FMC.RouteComplete==true,"FMC must mirror route completion")
+ check(s.data.FMC.Active==false,"FMC must become inactive after route completion")
  return true
 end
 return {Run=run}
