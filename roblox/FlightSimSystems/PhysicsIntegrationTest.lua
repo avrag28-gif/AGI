@@ -37,7 +37,7 @@ local function run()
  failedOther.Engines[1].Thrust=0
  Physics.new(failedOther):Step(1/60)
  check(failedOther.EngineIntegration.EngineOut==true,"left-engine loss must flag engine-out")
- check(failedOther.YawRate>0,"left-engine loss must produce a bounded right-yaw tendency in this sign convention")
+ check(failedOther.YawRate>0,"left-engine loss must produce a bounded right-yaw tendency in this sign convention")\n\n local idleFailed=baseState()\n idleFailed.Engines[2].Running=false\n idleFailed.Engines[2].Thrust=0\n idleFailed.Engines[1].Thrust=0\n Physics.new(idleFailed):Step(1/60)\n check(math.abs(idleFailed.EngineIntegration.YawRateContribution)<0.05,"zero-thrust engine failure must not create a large asymmetric yaw moment")\n check(math.abs(idleFailed.EngineIntegration.EngineYawMoment)<0.01,"engine yaw moment must be derived from actual thrust difference")
 
  local level=baseState()
  level.Pitch=0
