@@ -1,4 +1,4 @@
--- Physics force-integration regression tests v0.7
+-- Physics force-integration regression tests v0.8
 local State=require(script.Parent.State)
 local Physics=require(script.Parent.Physics)
 local FlightControls=require(script.Parent.FlightControls)
@@ -67,8 +67,6 @@ local function run()
  check(stallState.EngineIntegration.StallControlFactor<normal.EngineIntegration.StallControlFactor,"stall must reduce aerodynamic control effectiveness")
  check(math.abs(stallState.RollRate)<normalRoll,"stall must reduce aileron roll response")
 
- -- Low-speed envelope stall must also reduce control response even when the
- -- simplified AoA coefficient itself has not reached its post-stall region.
  local lowSpeedNormal=baseState()
  lowSpeedNormal.Airspeed=200
  lowSpeedNormal.WeatherEffects.EffectiveAirspeed=200
@@ -84,24 +82,17 @@ local function run()
  check(lowSpeedStall.EngineIntegration.StallControlFactor<=0.30,"stall-active envelope must clamp control effectiveness")
  check(math.abs(lowSpeedStall.RollRate)<lowSpeedRoll,"low-speed stall must reduce roll response")
 
- -- A positive bank with no roll input must generate a restoring roll-rate
- -- command instead of leaving the aircraft indefinitely at a fixed bank.
  local banked=baseState()
  banked.Roll=30
  Physics.new(banked):Step(1/60)
  check(banked.AeroStability.RollRestoringRate<0,"positive bank must generate negative restoring roll rate")
  check(banked.RollRate<0,"positive bank must start rolling back toward wings level")
 
- -- Sideslip should couple into roll through the simulated lateral stability
- -- model. The coefficient is intentionally a tunable game approximation.
  local slipped=baseState()
  slipped.Sideslip=5
  Physics.new(slipped):Step(1/60)
  check(slipped.AeroStability.SideslipRollRate<0,"positive sideslip must generate a restoring roll tendency")
 
- -- Hydraulic/control-surface integration: trim modifies the authoritative
- -- elevator surface once, and Physics consumes that surface without adding
- -- TrimPitch a second time.
  local trimState=baseState()
  trimState.Controls.Elevator=0
  trimState.TrimPitch=5
@@ -113,8 +104,6 @@ local function run()
  FlightControls.new(neutralTrim):Step(0.1)
  check(math.abs(trimState.Surface.Elevator)>math.abs(neutralTrim.Surface.Elevator),"trim did not change elevator surface relative to neutral trim")
 
- -- Loss of both primary hydraulic systems must reduce actual surface travel
- -- before Physics consumes the surface, while demand remains present.
  local hydraulicNormal=baseState()
  hydraulicNormal.Controls.Aileron=1
  hydraulicNormal.Controls.Elevator=1
@@ -142,8 +131,6 @@ local function run()
  Physics.new(degradedPhysics):Step(1/60)
  check(math.abs(degradedPhysics.RollRate)<math.abs(normalPhysics.RollRate),"hydraulic degradation must reduce roll response in Physics")
 
- -- Yaw is an attitude angle, while YawRate is angular rate. They must not
- -- share the same state value.
  local yawState=baseState()
  yawState.Yaw=10
  yawState.Heading=10
@@ -151,6 +138,31 @@ local function run()
  Physics.new(yawState):Step(1/60)
  check(math.abs(yawState.Yaw-10)>0.0001,"yaw attitude must integrate from yaw rate")
  check(math.abs(yawState.Yaw-yawState.YawRate)>0.0001,"yaw angle must not be overwritten with yaw rate")
+
+ -- World velocity must use the same heading convention as WeatherPhysics.
+ -- Heading 0 is +Z and heading 90 is +X in this simulator coordinate model.
+ local forwardState=baseState()
+ forwardState.Heading=0
+ local z0=forwardState.Position.Z
+ Physics.new(forwardState):Step(1/60)
+ check(forwardState.Velocity.Z>0,"heading 0 must produce positive-Z air velocity")
+ check(forwardState.Position.Z>z0,"heading 0 must advance Position toward +Z")
+
+ local eastState=baseState()
+ eastState.Heading=90
+ local x0=eastState.Position.X
+ Physics.new(eastState):Step(1/60)
+ check(eastState.Velocity.X>0,"heading 90 must produce positive-X air velocity")
+ check(eastState.Position.X>x0,"heading 90 must advance Position toward +X")
+
+ -- Pitch must not be added to Velocity.Y on top of the independently
+ -- integrated vertical speed; otherwise climb/descent is double-counted.
+ local velocityState=baseState()
+ velocityState.Pitch=10
+ velocityState.VerticalSpeed=0
+ Physics.new(velocityState):Step(1/60)
+ local expectedVertical=velocityState.VerticalSpeed*(0.3048/60)
+ check(math.abs(velocityState.Velocity.Y-expectedVertical)<1e-5,"Velocity.Y must match integrated vertical speed without pitch double-counting")
  return true
 end
 return {Run=run}
