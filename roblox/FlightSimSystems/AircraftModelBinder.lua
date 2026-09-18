@@ -6,6 +6,19 @@ local CollectionService=game:GetService("CollectionService")
 local AircraftModelBinder={}
 AircraftModelBinder.__index=AircraftModelBinder
 
+local function findMotor(model,names)
+	for _,name in ipairs(names) do
+		local obj=model:FindFirstChild(name,true)
+		if obj and obj:IsA("Motor6D") then return obj end
+	end
+	return nil
+end
+
+local function finite(v,d)
+	v=tonumber(v)
+	return (v and v==v and v~=math.huge and v~=-math.huge) and v or d
+end
+
 local function findMotor(model, names)
 	for _,name in ipairs(names) do
 		local obj=model:FindFirstChild(name,true)
@@ -31,11 +44,6 @@ end
 local TAG="FlightSimAircraft"
 local METERS_TO_STUDS=3.280839895
 
-local function finite(v,d)
-	v=tonumber(v)
-	return (v and v==v and v~=math.huge and v~=-math.huge) and v or d
-end
-
 local function findModel(id)
 	for _,model in ipairs(CollectionService:GetTagged(TAG)) do
 		if model:IsA("Model") then
@@ -44,6 +52,16 @@ local function findModel(id)
 		end
 	end
 	return nil
+end
+
+local function animateMotor(motor,angleDeg,axis,alpha)
+	if not motor then return end
+	local r=math.rad(angleDeg)
+	local target
+	if axis=="Y" then target=CFrame.Angles(0,r,0)
+	elseif axis=="Z" then target=CFrame.Angles(0,0,r)
+	else target=CFrame.Angles(r,0,0) end
+	motor.Transform=motor.Transform:Lerp(target,alpha)
 end
 
 local function setKinematic(model,enabled)
@@ -139,6 +157,18 @@ function AircraftModelBinder:StepControls()
 			model:SetAttribute("FlightSimGearRight",finite(gear.Right,0))
 			model:SetAttribute("FlightSimThrottle1",finite(throttle[1],0))
 			model:SetAttribute("FlightSimThrottle2",finite(throttle[2],0))
+			model:SetAttribute("FlightSimEngine1N1",finite((state.Engines[1] or {}).N1,0))
+			model:SetAttribute("FlightSimEngine2N1",finite((state.Engines[2] or {}).N1,0))
+			model:SetAttribute("FlightSimEngine1N2",finite((state.Engines[1] or {}).N2,0))
+			model:SetAttribute("FlightSimEngine2N2",finite((state.Engines[2] or {}).N2,0))
+			model:SetAttribute("FlightSimEngine1EGT",finite((state.Engines[1] or {}).EGT,0))
+			model:SetAttribute("FlightSimEngine2EGT",finite((state.Engines[2] or {}).EGT,0))
+			model:SetAttribute("FlightSimEngine1Running",(state.Engines[1] or {}).Running==true)
+			model:SetAttribute("FlightSimEngine2Running",(state.Engines[2] or {}).Running==true)
+			local e1=findMotor(model,{"Engine1FanMotor","LeftFanMotor","EngineLeftFanMotor"})
+			local e2=findMotor(model,{"Engine2FanMotor","RightFanMotor","EngineRightFanMotor"})
+			animateMotor(e1,finite((state.Engines[1] or {}).N1,0)*12,"Z",0.35)
+			animateMotor(e2,finite((state.Engines[2] or {}).N1,0)*12,"Z",0.35)
 			model:SetAttribute("FlightSimAileron",aileron)
 			model:SetAttribute("FlightSimElevator",elevator)
 			model:SetAttribute("FlightSimRudder",rudder)
