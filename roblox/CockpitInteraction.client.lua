@@ -47,6 +47,19 @@ local function knobValueAttribute(commandName)
  return nil
 end
 
+local function updateKnobDisplay(obj,value)
+ local display=obj:FindFirstChild("ValueDisplay",true)
+ if display and display:IsA("TextLabel") then
+  local format=obj:GetAttribute("DisplayFormat")
+  if type(format)=="string" and format~="" then
+   local ok,text=pcall(string.format,format,value)
+   display.Text=ok and text or tostring(value)
+  else
+   display.Text=tostring(math.round(value))
+  end
+ end
+end
+
 local function activateKnob(obj,c,directionOverride)
  local aircraft=findAircraftForControl(obj)
  local attr=obj:GetAttribute("ValueAttribute")
@@ -192,19 +205,6 @@ workspace.DescendantAdded:Connect(function(obj)
   task.defer(function() setupRotaryKnob(obj) end)
  end
 end)
-
-local function updateKnobDisplay(obj,value)
- local display=obj:FindFirstChild("ValueDisplay",true)
- if display and display:IsA("TextLabel") then
-  local format=obj:GetAttribute("DisplayFormat")
-  if type(format)=="string" and format~="" then
-   local ok,text=pcall(string.format,format,value)
-   display.Text=ok and text or tostring(value)
-  else
-   display.Text=tostring(math.round(value))
-  end
- end
-end
 
 local function syncMCPKnobValues()
  for obj in pairs(rotaryBound) do
