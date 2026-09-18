@@ -12,23 +12,23 @@ end
 function MCP.new(state) return setmetatable({state=state},MCP) end
 function MCP:SetHeading(v)
 	v=tonumber(v); if not finite(v) then return false,"invalid_heading" end
-	self.state:Get().Autopilot.TargetHeading=(v%360+360)%360; return true
+	local x=self.state:Get(); local h=(v%360+360)%360; x.Autopilot.TargetHeading=h; x.MCP.Heading=h; return true
 end
 function MCP:SetAltitude(v)
 	v=tonumber(v); if not finite(v) then return false,"invalid_altitude" end
-	self.state:Get().Autopilot.TargetAltitude=math.clamp(v,0,60000); return true
+	local x=self.state:Get(); local a=math.clamp(v,0,60000); x.Autopilot.TargetAltitude=a; x.MCP.Altitude=a; return true
 end
 function MCP:SetSpeed(v)
 	v=tonumber(v); if not finite(v) then return false,"invalid_speed" end
-	local x=self.state:Get(); x.Autopilot.TargetSpeed=math.clamp(v,60,350); return true
+	local x=self.state:Get(); local s=math.clamp(v,60,350); x.Autopilot.TargetSpeed=s; x.MCP.Speed=s; return true
 end
 function MCP:SetVerticalSpeed(v)
 	v=tonumber(v); if not finite(v) then return false,"invalid_vertical_speed" end
-	local x=self.state:Get(); x.Autopilot.TargetVerticalSpeed=math.clamp(v,-6000,6000); return true
+	local x=self.state:Get(); local vs=math.clamp(v,-6000,6000); x.Autopilot.TargetVerticalSpeed=vs; x.MCP.VerticalSpeed=vs; return true
 end
 function MCP:SetMode(mode)
 	mode=string.upper(tostring(mode)); if not VALID[mode] then return false,"invalid_mcp_mode" end
-	local x=self.state:Get(); x.Autopilot.Mode=mode
+	local x=self.state:Get(); x.Autopilot.Mode=mode; x.MCP.HeadingMode=(mode=="HDG" or mode=="LNAV") and mode.." SEL" or x.MCP.HeadingMode; x.MCP.AltitudeMode=(mode=="ALT_HOLD" or mode=="VNAV" or mode=="LCHG") and mode or x.MCP.AltitudeMode; x.MCP.VerticalSpeedMode=(mode=="VS") and "VS" or x.MCP.VerticalSpeedMode
 	if mode=="OFF" then
 		x.Autopilot.Enabled=false; x.Navigation.Mode="HDG"; x.VNAV.Mode="OFF"; return true
 	end
