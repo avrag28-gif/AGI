@@ -230,6 +230,46 @@ local function ensureSurfaceDisplay(part,name)
 	return sg
 end
 
+local function configurePhysicalMCPKnobs()
+	local aircraft=findLocalAircraft()
+	if not aircraft then return end
+	local knobs={
+		{names={"MCPHeadingKnob","HeadingSelectorKnob","HDGSelectorKnob"},command="MCPHeading",step=1,min=0,max=359,wrap=true,format="%03.0f"},
+		{names={"MCPAltitudeKnob","AltitudeSelectorKnob","ALTSelectorKnob"},command="MCPAltitude",step=100,min=0,max=60000,wrap=false,format="%05.0f"},
+		{names={"MCPSpeedKnob","SpeedSelectorKnob","IASSelectorKnob"},command="MCPSpeed",step=1,min=60,max=350,wrap=false,format="%03.0f"},
+		{names={"MCPVerticalSpeedKnob","VSSelectorKnob","VerticalSpeedKnob"},command="MCPVerticalSpeed",step=100,min=-6000,max=6000,wrap=false,format="%+05.0f"},
+	}
+	for _,cfg in ipairs(knobs) do
+		local knob
+		for _,name in ipairs(cfg.names) do
+			local candidate=aircraft:FindFirstChild(name,true)
+			if candidate and candidate:IsA("BasePart") then knob=candidate break end
+		end
+		if knob then
+			knob:SetAttribute("Interaction","MCP_KNOB")
+			knob:SetAttribute("Command",cfg.command)
+			knob:SetAttribute("Step",cfg.step)
+			knob:SetAttribute("Min",cfg.min)
+			knob:SetAttribute("Max",cfg.max)
+			knob:SetAttribute("Wrap",cfg.wrap)
+			knob:SetAttribute("DisplayFormat",cfg.format)
+			if not knob:FindFirstChildWhichIsA("ClickDetector") then
+				local cd=Instance.new("ClickDetector")
+				cd.MaxActivationDistance=10
+				cd.Parent=knob
+			end
+			if not knob:FindFirstChildWhichIsA("DragDetector") then
+				local dd=Instance.new("DragDetector")
+				dd.DragStyle=Enum.DragDetectorDragStyle.RotateAxis
+				dd.ResponseStyle=Enum.DragDetectorResponseStyle.Custom
+				dd.Axis=Vector3.yAxis
+				dd.RunLocally=true
+				dd.Parent=knob
+			end
+		end
+	end
+end
+
 local function configurePhysicalMCPControls()
 	local aircraft=findLocalAircraft()
 	if not aircraft then return end
@@ -274,6 +314,7 @@ local function refreshPhysicalDisplays()
 	modeLights.AP=findModeLight({"APModeLight","AutopilotLight","APAnnunciator"})
 	modeLights.AT=findModeLight({"ATModeLight","AutoThrottleLight","ATAnnunciator"})
 	modeLights.FD=findModeLight({"FDModeLight","FlightDirectorLight","FDAnnunciator"})
+	configurePhysicalMCPKnobs()
 	configurePhysicalMCPControls()
 end
 
