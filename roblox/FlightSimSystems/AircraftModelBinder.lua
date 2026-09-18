@@ -29,12 +29,6 @@ local function attrNumber(model,names,default)
 	return default
 end
 
-local function animateMotor(motor, angleDeg, sign, alpha)
-	if not motor then return end
-	local target=CFrame.Angles(math.rad(angleDeg*sign),0,0)
-	motor.Transform=motor.Transform:Lerp(target,alpha)
-end
-
 local TAG="FlightSimAircraft"
 local METERS_TO_STUDS=3.280839895
 
@@ -151,6 +145,15 @@ function AircraftModelBinder:Step()
 			model:SetAttribute("FlightSimAPEnabled",ap.Enabled==true)
 			model:SetAttribute("FlightSimAPMode",tostring(ap.Mode or "OFF"))
 			model:SetAttribute("FlightSimAPTargetAltitude",finite(ap.TargetAltitude,0))
+			local mcp=state.MCP or {}
+			model:SetAttribute("FlightSimMCPHeading",finite(mcp.Heading,0))
+			model:SetAttribute("FlightSimMCPAltitude",finite(mcp.Altitude,0))
+			model:SetAttribute("FlightSimMCPSpeed",finite(mcp.Speed,0))
+			model:SetAttribute("FlightSimMCPVerticalSpeed",finite(mcp.VerticalSpeed,0))
+			model:SetAttribute("FlightSimMCPHeadingMode",tostring(mcp.HeadingMode or "OFF"))
+			model:SetAttribute("FlightSimMCPAltitudeMode",tostring(mcp.AltitudeMode or "OFF"))
+			model:SetAttribute("FlightSimMCPVerticalSpeedMode",tostring(mcp.VerticalSpeedMode or "OFF"))
+			model:SetAttribute("FlightSimMCPFlightDirector",mcp.FlightDirector==true)
 			model:SetAttribute("FlightSimATEnabled",at.Enabled==true)
 			model:SetAttribute("FlightSimATMode",tostring(at.Mode or "OFF"))
 			model:SetAttribute("FlightSimATProtection",tostring(at.Protection or "NONE"))
@@ -199,16 +202,16 @@ function AircraftModelBinder:StepControls()
 			-- Optional mechanical animation contract. A model can provide Motor6D
 			-- names without requiring them; absent motors are simply ignored.
 			local alpha=0.45
-			animateMotor(findMotor(model,{"LeftAileronMotor","AileronLeftMotor"}),aileron*18,1,alpha)
-			animateMotor(findMotor(model,{"RightAileronMotor","AileronRightMotor"}),aileron*18,-1,alpha)
-			animateMotor(findMotor(model,{"ElevatorMotor","ElevatorLeftMotor"}),elevator*15,-1,alpha)
-			animateMotor(findMotor(model,{"RudderMotor"}),rudder*20,1,alpha)
-			animateMotor(findMotor(model,{"FlapMotor","FlapsMotor"}),flap*30,1,alpha)
-			animateMotor(findMotor(model,{"SpeedbrakeMotor","SpoilerMotor"}),speedbrake*35,1,alpha)
+			animateMotor(findMotor(model,{"LeftAileronMotor","AileronLeftMotor"}),aileron*18,"X",alpha)
+			animateMotor(findMotor(model,{"RightAileronMotor","AileronRightMotor"}),aileron*-18,"X",alpha)
+			animateMotor(findMotor(model,{"ElevatorMotor","ElevatorLeftMotor"}),elevator*-15,"X",alpha)
+			animateMotor(findMotor(model,{"RudderMotor"}),rudder*20,"Y",alpha)
+			animateMotor(findMotor(model,{"FlapMotor","FlapsMotor"}),flap*30,"X",alpha)
+			animateMotor(findMotor(model,{"SpeedbrakeMotor","SpoilerMotor"}),speedbrake*35,"X",alpha)
 			local gearAngle=attrNumber(model,{"GearAnimationAngle"},90)
-			animateMotor(findMotor(model,{"NoseGearMotor","GearNoseMotor"}),finite(gear.Nose,0)*gearAngle,1,alpha)
-			animateMotor(findMotor(model,{"LeftGearMotor","GearLeftMotor"}),finite(gear.Left,0)*gearAngle,1,alpha)
-			animateMotor(findMotor(model,{"RightGearMotor","GearRightMotor"}),finite(gear.Right,0)*gearAngle,1,alpha)
+			animateMotor(findMotor(model,{"NoseGearMotor","GearNoseMotor"}),finite(gear.Nose,0)*gearAngle,"X",alpha)
+			animateMotor(findMotor(model,{"LeftGearMotor","GearLeftMotor"}),finite(gear.Left,0)*gearAngle,"X",alpha)
+			animateMotor(findMotor(model,{"RightGearMotor","GearRightMotor"}),finite(gear.Right,0)*gearAngle,"X",alpha)
 		end
 	end
 end
