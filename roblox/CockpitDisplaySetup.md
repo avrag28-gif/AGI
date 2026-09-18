@@ -1,39 +1,36 @@
-# Cockpit display integration
+# Cockpit Display & MCP Setup
 
-The aircraft model bridge exposes FlightSim* Model attributes. A client display script can render these attributes onto physical cockpit display Parts with SurfaceGui.
+The aircraft bridge exposes simulator state as FlightSim* Model attributes and the client creates optional 3D cockpit displays with SurfaceGui.
 
-## Optional display Parts
-- PFD: PFDDisplay, CaptainPFD, LeftPFD
-- ND: NDDisplay, CaptainND, LeftND
-- EICAS: EICASDisplay, CenterEICAS, EngineDisplay
+## Required aircraft tag
 
-The client creates a SurfaceGui only when one of these Parts exists. No cockpit geometry is required by the simulator.
+Tag the aircraft Model with FlightSimAircraft and set FlightSimAircraftId = P_<Player.UserId>. FlightSimKinematic defaults to true.
 
-Roblox documents SurfaceGui as an in-world UI container that renders on a Part face; TextLabel can be used inside it for text-based instrument output.
+## Optional 3D displays
 
-## MCP / AFDS attributes
-- FlightSimMCPHeading
-- FlightSimMCPAltitude
-- FlightSimMCPSpeed
-- FlightSimMCPVerticalSpeed
-- FlightSimMCPMode
-- FlightSimMCPFlightDirector
-- FlightSimAPEnabled
-- FlightSimAPMode
-- FlightSimAPTargetAltitude
-- FlightSimATEnabled
-- FlightSimATMode
-- FlightSimATProtection
+| Display | Accepted names |
+|---|---|
+| Captain PFD | PFDDisplay, CaptainPFD, LeftPFD |
+| Captain ND | NDDisplay, CaptainND, LeftND |
+| EICAS | EICASDisplay, CenterEICAS, EngineDisplay |
+| MCP display | MCPDisplay, MCPAnnunciator, AutopilotDisplay |
 
-These are presentation attributes. Command authority remains on the server through the existing command router.
+The client creates a SurfaceGui and TextLabel on matching parts. SurfaceGui is Roblox's in-world UI container for UI objects such as TextLabel.
 
-## Physical control interaction
+## MCP controls
 
-Use the existing CockpitInteraction.client.lua contract: Command, A, B, and optional Toggle.
-Examples include MCPHeading, MCPAltitude, MCPSpeed, MCPVerticalSpeed, MCPMode, AP, AutoThrottle, and GoAround.
+Optional physical button parts: APButton/AutopilotButton/MCPAPButton; ATButton/AutoThrottleButton/MCPATButton; HDGButton/HeadingButton/MCPHeadingButton; LNAVButton; VNAVButton; APPButton; VORButton; VSButton; ALTHLDButton; LVLCHGButton.
 
-## Orientation
+A ClickDetector or ProximityPrompt can be attached. The client assigns the appropriate Command/A attributes when a named part is found.
 
-SurfaceGui.Face defaults to Front. If a physical display faces another direction, set the SurfaceGui face or adapt the display binder to the model orientation. AlwaysOnTop is kept false so the display behaves like a physical surface and can be occluded by cockpit geometry.
+## MCP knobs
 
-The display system is a simulator presentation layer, not a certified Boeing avionics implementation.
+For a rotary MCP knob set Interaction = MCP_KNOB and Command to MCPHeading, MCPAltitude, MCPSpeed, or MCPVerticalSpeed. Optional attributes: Step, Min, Max, Wrap, Direction, ValueAttribute. A DragDetector enables continuous rotation.
+
+The cockpit interaction layer reads FlightSimMCPHeading, FlightSimMCPAltitude, FlightSimMCPSpeed, and FlightSimMCPVerticalSpeed.
+
+## State exposed to cockpit
+
+The bridge also exposes AP/A/T, hydraulics, electrical, gear, flaps, trim, steering, engine N1/N2/EGT/running, reverse thrust, warnings/cautions, and annunciation messages as FlightSim* attributes.
+
+This is an integration contract; it does not claim the 3D model geometry or display symbology is certified Boeing artwork.
