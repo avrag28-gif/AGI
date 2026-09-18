@@ -61,7 +61,8 @@ function Physics:Step(dt)
  -- Preserve that authority in the rotational model rather than applying a second,
  -- hidden hydraulic multiplier here. Expose the effective moment authority so
  -- failures, manual reversion, and stall degradation remain observable end-to-end.
- local controlFeel=x.ControlFeel or {}
+ x.ControlFeel=x.ControlFeel or {}
+ local controlFeel=x.ControlFeel
  local rollAuthority=clamp(finite(controlFeel.AileronAuthority,math.abs(ail)),0,1)
  local pitchAuthority=clamp(finite(controlFeel.ElevatorAuthority,math.abs(ele)),0,1)
  local yawAuthority=clamp(finite(controlFeel.RudderAuthority,math.abs(rud)),0,1)
