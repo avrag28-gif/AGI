@@ -230,6 +230,36 @@ local function ensureSurfaceDisplay(part,name)
 	return sg
 end
 
+local function configurePhysicalMCPControls()
+	local aircraft=findLocalAircraft()
+	if not aircraft then return end
+	local mappings={
+		{names={"APButton","AutopilotButton","MCPAPButton"},command="AP",a=true},
+		{names={"ATButton","AutoThrottleButton","MCPATButton"},command="AutoThrottle",a=true},
+		{names={"HDGButton","HeadingButton","MCPHeadingButton"},command="MCPMode",a="HDG"},
+		{names={"LNAVButton","LNAVModeButton"},command="MCPMode",a="LNAV"},
+		{names={"VNAVButton","VNAVModeButton"},command="MCPMode",a="VNAV"},
+		{names={"APPButton","ApproachButton","MCPApproachButton"},command="MCPMode",a="APP"},
+		{names={"VORButton","VORModeButton"},command="MCPMode",a="VOR"},
+		{names={"VSButton","VerticalSpeedButton","MCPVSButton"},command="MCPMode",a="VS"},
+		{names={"ALTHLDButton","AltitudeHoldButton","MCPAltButton"},command="MCPMode",a="ALT_HOLD"},
+		{names={"LVLCHGButton","LevelChangeButton","MCPLvlChgButton"},command="MCPMode",a="LCHG"},
+	}
+	for _,mapping in ipairs(mappings) do
+		local target
+		for _,name in ipairs(mapping.names) do
+			target=aircraft:FindFirstChild(name,true)
+			if target then break end
+		end
+		if target then
+			if target:GetAttribute("Command")==nil then target:SetAttribute("Command",mapping.command) end
+			if target:GetAttribute("A")==nil then target:SetAttribute("A",mapping.a) end
+			if target:GetAttribute("Toggle")==nil and mapping.command=="AP" then target:SetAttribute("Toggle",true) end
+			if target:GetAttribute("Toggle")==nil and mapping.command=="AutoThrottle" then target:SetAttribute("Toggle",true) end
+		end
+	end
+end
+
 local function refreshPhysicalDisplays()
 	local pfd=ensureSurfaceDisplay(findPhysicalDisplay({"PFDDisplay","CaptainPFD","LeftPFD"}),"FlightSimPFD")
 	local nd=ensureSurfaceDisplay(findPhysicalDisplay({"NDDisplay","CaptainND","LeftND"}),"FlightSimND")
@@ -241,6 +271,7 @@ local function refreshPhysicalDisplays()
 	modeLights.AP=findModeLight({"APModeLight","AutopilotLight","APAnnunciator"})
 	modeLights.AT=findModeLight({"ATModeLight","AutoThrottleLight","ATAnnunciator"})
 	modeLights.FD=findModeLight({"FDModeLight","FlightDirectorLight","FDAnnunciator"})
+	configurePhysicalMCPControls()
 end
 
 local function send(name,a,b)
