@@ -42,6 +42,51 @@ readout.TextYAlignment=Enum.TextYAlignment.Top
 readout.Text="WAITING FOR SIMULATION..."
 readout.Parent=panel
 
+-- Instrument stack: compact PFD/ND/EICAS-style presentation using the authoritative telemetry payload.
+-- If a physical cockpit SurfaceGui exists later, the same display formatting can be moved there.
+local instruments=Instance.new("Frame")
+instruments.Name="InstrumentStack"
+instruments.Size=UDim2.fromOffset(560,310)
+instruments.Position=UDim2.new(0,18,0,18)
+instruments.BackgroundTransparency=0.18
+instruments.Parent=gui
+
+local pfd=Instance.new("TextLabel")
+pfd.Name="PFD"
+pfd.Size=UDim2.new(0.49,-6,1,0)
+pfd.Position=UDim2.fromScale(0,0)
+pfd.BackgroundTransparency=1
+pfd.Font=Enum.Font.Code
+pfd.TextSize=14
+pfd.TextXAlignment=Enum.TextXAlignment.Left
+pfd.TextYAlignment=Enum.TextYAlignment.Top
+pfd.Text="PFD\nWAITING..."
+pfd.Parent=instruments
+
+local nd=Instance.new("TextLabel")
+nd.Name="ND"
+nd.Size=UDim2.new(0.49,-6,1,0)
+nd.Position=UDim2.new(0.51,6,0,0)
+nd.BackgroundTransparency=1
+nd.Font=Enum.Font.Code
+nd.TextSize=14
+nd.TextXAlignment=Enum.TextXAlignment.Left
+nd.TextYAlignment=Enum.TextYAlignment.Top
+nd.Text="ND\nWAITING..."
+nd.Parent=instruments
+
+local eicas=Instance.new("TextLabel")
+eicas.Name="EICAS"
+eicas.Size=UDim2.fromOffset(420,180)
+eicas.Position=UDim2.new(1,-438,0,18)
+eicas.BackgroundTransparency=0.18
+eicas.Font=Enum.Font.Code
+eicas.TextSize=14
+eicas.TextXAlignment=Enum.TextXAlignment.Left
+eicas.TextYAlignment=Enum.TextYAlignment.Top
+eicas.Text="EICAS\nWAITING..."
+eicas.Parent=gui
+
 local help=Instance.new("TextLabel")
 help.Size=UDim2.new(0,650,0,175)
 help.Position=UDim2.new(1,-668,1,-193)
@@ -175,6 +220,9 @@ telemetry.OnClientEvent:Connect(function(state)
  local intruder=td.ClosestIntruder or dec.ConflictWith or "-"
  local range=td.ClosestRangeM or dec.DistanceM or 0
 
+ pfd.Text=string.format("PFD\nALT %5.0fft  IAS %4.0fkt\nHDG %03.0f°  PITCH %+4.1f°\nROLL %+4.1f°  VS %+5.0f\nAP %-3s  AT %-3s",state.Altitude,state.Airspeed,state.Heading,state.Pitch,state.Roll,state.VerticalSpeed,apState.Enabled and "ON" or "OFF",at.Enabled and "ON" or "OFF")
+ nd.Text=string.format("ND\nMODE %-6s  WPT %d\nDTW %5.1f  BRG %03.0f\nXTK %+5.2f  IRS %-3s\nRADAR %-3s  TCAS %-3s",state.Navigation.Mode or "HDG",state.Navigation.ActiveWaypoint or 0,state.Navigation.DistanceToWaypoint or 0,state.Navigation.BearingToWaypoint or 0,state.Navigation.CrossTrackError or 0,state.IRS.Mode or "OFF",state.Avionics.WeatherRadar and "ON" or "OFF",trafficText)
+ eicas.Text=string.format("EICAS\nENG1 N1 %5.1f N2 %5.1f EGT %4.0f\nENG2 N1 %5.1f N2 %5.1f EGT %4.0f\nHYD A %4.0f  B %4.0f  STBY %4.0f\nELEC B1 %s B2 %s APU %s\nGEAR %s  FLAP %3.0f%%\nWARN %s  CAUT %s",e1.N1,e1.N2,e1.EGT,e2.N1,e2.N2,e2.EGT,state.Hydraulic.A.Pressure,state.Hydraulic.B.Pressure,state.Hydraulic.Standby.Pressure,tostring(state.Electrical.Bus1),tostring(state.Electrical.Bus2),tostring(state.Electrical.APUGeneratorAvailable),state.GearStatus.Warning and "WARN" or "OK",(state.Controls.Flap or 0)*100,tostring((state.Annunciation or {}).MasterWarning or false),tostring((state.Annunciation or {}).MasterCaution or false))
  readout.Text=string.format(
   "PHASE %-14s  ATC %-9s\nALT %6.0f ft  IAS %5.0f kt  HDG %6.1f°\nP/R %5.1f/%5.1f°  VS %6.0f fpm\n\nENG1 N1 %5.1f N2 %5.1f EGT %4.0f RUN %s\nENG2 N1 %5.1f N2 %5.1f EGT %4.0f RUN %s\nASYM %+5.2f  YAWM %+7.3f  OUT %s\n\nELEC BAT %s APU %s BUS %s/%s\nHYD A %4.0f psi B %4.0f psi\nFUEL %7.0f  GEAR %s  FLAP %3.0f%%  BRK %s\nSTEER %s %5.1f°  YAW %5.1f°/s\nAP %s %-10s ALT %6.0f\nA/T %s %-14s SPD %6.0f ERR %+5.1f\nPROT %-10s CMD %.2f/%.2f\n\nATC %s  SQWK %s  READBACK %s\nTRAFFIC %-4s  INTRUDER %-12s  RANGE %5.0fm\nATC DECISION %-14s",
   state.Phase,ac.Phase or "COLD",state.Altitude,state.Airspeed,state.Heading,state.Pitch,state.Roll,state.VerticalSpeed,
