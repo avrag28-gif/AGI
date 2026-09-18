@@ -169,6 +169,16 @@ function AircraftModelBinder:Step()
 			model:SetAttribute("FlightSimATProtection",tostring(at.Protection or "NONE"))
 			model:SetAttribute("FlightSimMasterWarning",(annunciation.MasterWarning or false)==true)
 			model:SetAttribute("FlightSimMasterCaution",(annunciation.MasterCaution or false)==true)
+			model:SetAttribute("FlightSimAnnunciationFire",(annunciation.Fire or false)==true)
+			model:SetAttribute("FlightSimAnnunciationStall",(annunciation.Stall or false)==true)
+			model:SetAttribute("FlightSimAnnunciationGearUnsafe",(annunciation.GearUnsafe or false)==true)
+			model:SetAttribute("FlightSimAnnunciationFlapOverspeed",(annunciation.FlapOverspeed or false)==true)
+			model:SetAttribute("FlightSimAnnunciationHydraulicLow",(annunciation.HydraulicLow or false)==true)
+			model:SetAttribute("FlightSimAnnunciationElectricalLoss",(annunciation.ElectricalLoss or false)==true)
+			model:SetAttribute("FlightSimAnnunciationEngineOut",(annunciation.EngineOut or false)==true)
+			model:SetAttribute("FlightSimAnnunciationTrafficTA",(annunciation.TrafficTA or false)==true)
+			model:SetAttribute("FlightSimAnnunciationTrafficRA",(annunciation.TrafficRA or false)==true)
+			model:SetAttribute("FlightSimAnnunciationMessages",table.concat(annunciation.Messages or {}," | "))
 		end
 	end
 end
@@ -187,6 +197,21 @@ function AircraftModelBinder:StepControls()
 			local gear=state.GearPosition or {}
 			local throttle=state.Throttle or {}
 			model:SetAttribute("FlightSimFlap",finite((state.Surface or {}).Flap,0))
+			local flapSystem=state.FlapSystem or {}
+			local trimState=state.TrimState or {}
+			local steering=state.GroundSteering or {}
+			local landing=state.Landing or {}
+			model:SetAttribute("FlightSimFlapDetent",finite(flapSystem.Detent,0))
+			model:SetAttribute("FlightSimFlapCommandDetent",finite(flapSystem.Command,0))
+			model:SetAttribute("FlightSimFlapVFE",finite(flapSystem.VFE,250))
+			model:SetAttribute("FlightSimFlapOverspeed",flapSystem.OverSpeed==true)
+			model:SetAttribute("FlightSimTrimPitch",finite(state.TrimPitch,0))
+			model:SetAttribute("FlightSimTrimCommand",finite(trimState.Command,0))
+			model:SetAttribute("FlightSimNoseWheelAngle",finite(steering.NoseWheelAngle,0))
+			model:SetAttribute("FlightSimGearDownLocked",(state.GearStatus or {}).DownLocked==true)
+			model:SetAttribute("FlightSimGearUpLocked",(state.GearStatus or {}).UpLocked==true)
+			model:SetAttribute("FlightSimGearTransitioning",(state.GearStatus or {}).Transitioning==true)
+			model:SetAttribute("FlightSimLandingPhase",tostring(landing.Phase or "GROUND"))
 			model:SetAttribute("FlightSimGearNose",finite(gear.Nose,0))
 			model:SetAttribute("FlightSimGearLeft",finite(gear.Left,0))
 			model:SetAttribute("FlightSimGearRight",finite(gear.Right,0))
