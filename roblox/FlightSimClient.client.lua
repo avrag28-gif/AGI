@@ -63,6 +63,7 @@ local autoThrottle=false
 local mcpSpeed=250
 local mcpVS=0
 local throttle={[1]=0,[2]=0}
+local throttleAccumulator=0
 local starter={[1]=false,[2]=false}
 local fuel={[1]=false,[2]=false}
 local ignition={[1]=false,[2]=false}
@@ -101,9 +102,12 @@ local function updateControls(dt)
   end
  end
 
+ throttleAccumulator+=0.05
+ if throttleAccumulator<0.1 then return end
+ throttleAccumulator=0
  local up=UserInputService:IsKeyDown(Enum.KeyCode.PageUp) or UserInputService:IsKeyDown(Enum.KeyCode.RightBracket)
  local down=UserInputService:IsKeyDown(Enum.KeyCode.PageDown) or UserInputService:IsKeyDown(Enum.KeyCode.LeftBracket)
- local throttleRate=(up and 0.025) or (down and -0.025) or 0
+ local throttleRate=(up and 0.05) or (down and -0.05) or 0
  if throttleRate~=0 then
   throttle[1]=math.clamp(throttle[1]+throttleRate,0,1)
   throttle[2]=math.clamp(throttle[2]+throttleRate,0,1)
