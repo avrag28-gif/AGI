@@ -40,3 +40,16 @@ If a future aircraft implementation uses a physically simulated Roblox assembly 
 The binder also supports optional `Motor6D` animation. If the aircraft model contains these Motor6D names, their `Transform` is driven from the authoritative surface state: `LeftAileronMotor`, `RightAileronMotor`, `ElevatorMotor`, `RudderMotor`, `FlapMotor`, `SpeedbrakeMotor`, `NoseGearMotor`, `LeftGearMotor`, and `RightGearMotor`. Missing motors are ignored. `GearAnimationAngle` can override the default 90-degree gear animation angle.
 
 For mechanical aircraft rigs, Motor6D is suitable for non-character mechanical joints and its `Transform` is intended for custom animation. citeturn0search0
+
+## MCP / AP / AT / FD cockpit feedback
+
+The client display layer can optionally bind physical cockpit parts by name:
+
+- `MCPDisplay`, `MCPAnnunciator`, or `AutopilotDisplay` — numeric MCP feedback.
+- `APModeLight`, `AutopilotLight`, or `APAnnunciator` — AP annunciator.
+- `ATModeLight`, `AutoThrottleLight`, or `ATAnnunciator` — A/T annunciator.
+- `FDModeLight`, `FlightDirectorLight`, or `FDAnnunciator` — flight-director annunciator.
+
+The MCP display reports selected speed, heading, altitude, vertical speed, AP/AT/FD state, and current MCP mode fields. The mode lights are optional `BasePart`, `PointLight`, or `SurfaceLight` objects. Missing parts are ignored.
+
+The display is created as a `SurfaceGui` on the local player's aircraft, so it does not require hardcoded cockpit geometry. Roblox supports SurfaceGui rendering on a BasePart face and configurable canvas/pixel density. This is presentation/interaction plumbing; it does not claim to reproduce proprietary Boeing display electronics.
