@@ -28,7 +28,7 @@ function Test.Run()
 	check(s.IRS.Left.Aligned==false and s.IRS.Right.Aligned==false,"IRS must start unaligned")
 	check(s.Autopilot.Enabled==false and s.AutoThrottle.Enabled==false,"automation must start disabled")
 	check(s.FMC.Active==false,"FMC must start inactive")
-	check(s.Fuel.Total==30000,"initial fuel total contract changed unexpectedly")
+	check(s.Fuel.Total==0,"cold-and-dark fuel must start empty")
 	for i=1,2 do
 		local e=s.Engines[i]
 		finiteNumber(e.N1,"engine N1")
