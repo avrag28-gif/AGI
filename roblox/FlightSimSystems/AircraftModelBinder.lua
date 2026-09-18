@@ -6,6 +6,28 @@ local CollectionService=game:GetService("CollectionService")
 local AircraftModelBinder={}
 AircraftModelBinder.__index=AircraftModelBinder
 
+local function findMotor(model, names)
+	for _,name in ipairs(names) do
+		local obj=model:FindFirstChild(name,true)
+		if obj and obj:IsA("Motor6D") then return obj end
+	end
+	return nil
+end
+
+local function attrNumber(model,names,default)
+	for _,name in ipairs(names) do
+		local v=model:GetAttribute(name)
+		if typeof(v)=="number" then return v end
+	end
+	return default
+end
+
+local function animateMotor(motor, angleDeg, sign, alpha)
+	if not motor then return end
+	local target=CFrame.Angles(math.rad(angleDeg*sign),0,0)
+	motor.Transform=motor.Transform:Lerp(target,alpha)
+end
+
 local TAG="FlightSimAircraft"
 local METERS_TO_STUDS=3.280839895
 
@@ -103,12 +125,38 @@ function AircraftModelBinder:StepControls()
 		local model=b.model
 		local state=b.state and b.state:Get()
 		if model and model.Parent and state then
+			local surface=state.Surface or {}
+			local flap=finite(surface.Flap,0)
+			local elevator=finite(surface.Elevator,0)
+			local aileron=finite(surface.Aileron,0)
+			local rudder=finite(surface.Rudder,0)
+			local speedbrake=finite(surface.Speedbrake,finite(surface.Spoilers,0))
+			local gear=state.GearPosition or {}
+			local throttle=state.Throttle or {}
 			model:SetAttribute("FlightSimFlap",finite((state.Surface or {}).Flap,0))
-			model:SetAttribute("FlightSimGearNose",finite((state.GearPosition or {}).Nose,0))
-			model:SetAttribute("FlightSimGearLeft",finite((state.GearPosition or {}).Left,0))
-			model:SetAttribute("FlightSimGearRight",finite((state.GearPosition or {}).Right,0))
-			model:SetAttribute("FlightSimThrottle1",finite((state.Throttle or {})[1],0))
-			model:SetAttribute("FlightSimThrottle2",finite((state.Throttle or {})[2],0))
+			model:SetAttribute("FlightSimGearNose",finite(gear.Nose,0))
+			model:SetAttribute("FlightSimGearLeft",finite(gear.Left,0))
+			model:SetAttribute("FlightSimGearRight",finite(gear.Right,0))
+			model:SetAttribute("FlightSimThrottle1",finite(throttle[1],0))
+			model:SetAttribute("FlightSimThrottle2",finite(throttle[2],0))
+			model:SetAttribute("FlightSimAileron",aileron)
+			model:SetAttribute("FlightSimElevator",elevator)
+			model:SetAttribute("FlightSimRudder",rudder)
+			model:SetAttribute("FlightSimSpeedbrake",speedbrake)
+
+			-- Optional mechanical animation contract. A model can provide Motor6D
+			-- names without requiring them; absent motors are simply ignored.
+			local alpha=0.45
+			animateMotor(findMotor(model,{"LeftAileronMotor","AileronLeftMotor"}),aileron*18,1,alpha)
+			animateMotor(findMotor(model,{"RightAileronMotor","AileronRightMotor"}),aileron*18,-1,alpha)
+			animateMotor(findMotor(model,{"ElevatorMotor","ElevatorLeftMotor"}),elevator*15,-1,alpha)
+			animateMotor(findMotor(model,{"RudderMotor"}),rudder*20,1,alpha)
+			animateMotor(findMotor(model,{"FlapMotor","FlapsMotor"}),flap*30,1,alpha)
+			animateMotor(findMotor(model,{"SpeedbrakeMotor","SpoilerMotor"}),speedbrake*35,1,alpha)
+			local gearAngle=attrNumber(model,{"GearAnimationAngle"},90)
+			animateMotor(findMotor(model,{"NoseGearMotor","GearNoseMotor"}),finite(gear.Nose,0)*gearAngle,1,alpha)
+			animateMotor(findMotor(model,{"LeftGearMotor","GearLeftMotor"}),finite(gear.Left,0)*gearAngle,1,alpha)
+			animateMotor(findMotor(model,{"RightGearMotor","GearRightMotor"}),finite(gear.Right,0)*gearAngle,1,alpha)
 		end
 	end
 end
