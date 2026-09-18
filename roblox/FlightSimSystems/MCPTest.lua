@@ -1,11 +1,11 @@
 -- FlightSim MCP contract tests v0.1
 -- Deterministic state-level checks; execute inside Roblox Studio/TestService.
-local MCP=require(script.Parent.MCP.v02)
+local MCP=require(script.Parent.MCP)
 local function expect(condition,message)
  assert(condition,message)
 end
 local function newState()
- local state={Autopilot={TargetHeading=0,TargetAltitude=0,TargetSpeed=nil,TargetVerticalSpeed=0,Mode="HDG",Enabled=false},Navigation={}}
+ local state={Autopilot={TargetHeading=0,TargetAltitude=0,TargetSpeed=nil,TargetVerticalSpeed=0,Mode="HDG",Enabled=false},MCP={Heading=0,Altitude=0,Speed=250,VerticalSpeed=0,HeadingMode="OFF",AltitudeMode="OFF",VerticalSpeedMode="OFF",FlightDirector=false},Navigation={Mode="HDG"},VNAV={Mode="OFF",CommandVerticalSpeed=0}}
  return {Get=function() return state end},state
 end
 local stateObj,x=newState(); local m=MCP.new(stateObj)
@@ -22,3 +22,7 @@ expect(m:SetVerticalSpeed(nil)==false,"missing vertical speed must be rejected")
 m:SetMode("OFF")
 expect(x.Autopilot.Enabled==false,"OFF mode must disable autopilot")
 return true
+
+expect(m:SetMode("HDG")==true and x.MCP.HeadingMode=="HDG SEL","HDG mode should update MCP annunciation")
+m:Step(1/60)
+expect(x.Navigation.CommandHeading==5,"HDG mode should feed commanded heading")
