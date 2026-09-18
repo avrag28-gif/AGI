@@ -115,6 +115,54 @@ local ignition={[1]=false,[2]=false}
 local lastControl={Elevator=999,Aileron=999,Rudder=999,NoseWheelSteering=999}
 local controlAccumulator=0
 
+local function findPhysicalDisplay(names)
+	local tagged=workspace:FindFirstChild("FlightSimAircraft",true)
+	for _,name in ipairs(names) do
+		local obj=workspace:FindFirstChild(name,true)
+		if obj and obj:IsA("BasePart") then return obj end
+		if tagged then
+			obj=tagged:FindFirstChild(name,true)
+			if obj and obj:IsA("BasePart") then return obj end
+		end
+	end
+	return nil
+end
+
+local physicalDisplays={}
+
+local function ensureSurfaceDisplay(part,name)
+	if not part then return nil end
+	local guiPart=part:FindFirstChild(name)
+	if guiPart and guiPart:IsA("SurfaceGui") then return guiPart end
+	local sg=Instance.new("SurfaceGui")
+	sg.Name=name
+	sg.Face=Enum.NormalId.Front
+	sg.AlwaysOnTop=false
+	sg.LightInfluence=0
+	sg.MaxDistance=100
+	sg.PixelsPerStud=100
+	sg.Parent=part
+	local label=Instance.new("TextLabel")
+	label.Name="Display"
+	label.Size=UDim2.fromScale(1,1)
+	label.BackgroundTransparency=1
+	label.TextColor3=Color3.new(1,1,1)
+	label.Font=Enum.Font.Code
+	label.TextSize=18
+	label.TextXAlignment=Enum.TextXAlignment.Left
+	label.TextYAlignment=Enum.TextYAlignment.Top
+	label.Parent=sg
+	return sg
+end
+
+local function refreshPhysicalDisplays()
+	if physicalDisplays.ready then return end
+	physicalDisplays.PFD=ensureSurfaceDisplay(findPhysicalDisplay({"PFDDisplay","CaptainPFD","LeftPFD"}),"FlightSimPFD")
+	physicalDisplays.ND=ensureSurfaceDisplay(findPhysicalDisplay({"NDDisplay","CaptainND","LeftND"}),"FlightSimND")
+	physicalDisplays.EICAS=ensureSurfaceDisplay(findPhysicalDisplay({"EICASDisplay","CenterEICAS","EngineDisplay"}),"FlightSimEICAS")
+	physicalDisplays.ready=true
+end
+
 local function send(name,a,b)
  command:FireServer(name,a,b)
 end
@@ -204,6 +252,7 @@ UserInputService.InputBegan:Connect(function(input,processed)
 end)
 
 telemetry.OnClientEvent:Connect(function(state)
+ refreshPhysicalDisplays()
  local e1,e2=state.Engines[1],state.Engines[2]
  local gs=state.GroundSteering or {}
  local at=state.AutoThrottle or {}
@@ -223,6 +272,19 @@ telemetry.OnClientEvent:Connect(function(state)
  pfd.Text=string.format("PFD\nALT %5.0fft  IAS %4.0fkt\nHDG %03.0f°  PITCH %+4.1f°\nROLL %+4.1f°  VS %+5.0f\nAP %-3s  AT %-3s",state.Altitude,state.Airspeed,state.Heading,state.Pitch,state.Roll,state.VerticalSpeed,apState.Enabled and "ON" or "OFF",at.Enabled and "ON" or "OFF")
  nd.Text=string.format("ND\nMODE %-6s  WPT %d\nDTW %5.1f  BRG %03.0f\nXTK %+5.2f  IRS %-3s\nRADAR %-3s  TCAS %-3s",state.Navigation.Mode or "HDG",state.Navigation.ActiveWaypoint or 0,state.Navigation.DistanceToWaypoint or 0,state.Navigation.BearingToWaypoint or 0,state.Navigation.CrossTrackError or 0,state.IRS.Mode or "OFF",state.Avionics.WeatherRadar and "ON" or "OFF",trafficText)
  eicas.Text=string.format("EICAS\nENG1 N1 %5.1f N2 %5.1f EGT %4.0f\nENG2 N1 %5.1f N2 %5.1f EGT %4.0f\nHYD A %4.0f  B %4.0f  STBY %4.0f\nELEC B1 %s B2 %s APU %s\nGEAR %s  FLAP %3.0f%%\nWARN %s  CAUT %s",e1.N1,e1.N2,e1.EGT,e2.N1,e2.N2,e2.EGT,state.Hydraulic.A.Pressure,state.Hydraulic.B.Pressure,state.Hydraulic.Standby.Pressure,tostring(state.Electrical.Bus1),tostring(state.Electrical.Bus2),tostring(state.Electrical.APUGeneratorAvailable),state.GearStatus.Warning and "WARN" or "OK",(state.Controls.Flap or 0)*100,tostring((state.Annunciation or {}).MasterWarning or false),tostring((state.Annunciation or {}).MasterCaution or false))
+ if physicalDisplays.PFD then
+	local label=physicalDisplays.PFD:FindFirstChild("Display")
+	if label then label.Text=pfd.Text end
+ end
+ if physicalDisplays.ND then
+	local label=physicalDisplays.ND:FindFirstChild("Display")
+	if label then label.Text=nd.Text end
+ end
+ if physicalDisplays.EICAS then
+	local label=physicalDisplays.EICAS:FindFirstChild("Display")
+	if label then label.Text=eicas.Text end
+ end
+
  readout.Text=string.format(
   "PHASE %-14s  ATC %-9s\nALT %6.0f ft  IAS %5.0f kt  HDG %6.1f°\nP/R %5.1f/%5.1f°  VS %6.0f fpm\n\nENG1 N1 %5.1f N2 %5.1f EGT %4.0f RUN %s\nENG2 N1 %5.1f N2 %5.1f EGT %4.0f RUN %s\nASYM %+5.2f  YAWM %+7.3f  OUT %s\n\nELEC BAT %s APU %s BUS %s/%s\nHYD A %4.0f psi B %4.0f psi\nFUEL %7.0f  GEAR %s  FLAP %3.0f%%  BRK %s\nSTEER %s %5.1f°  YAW %5.1f°/s\nAP %s %-10s ALT %6.0f\nA/T %s %-14s SPD %6.0f ERR %+5.1f\nPROT %-10s CMD %.2f/%.2f\n\nATC %s  SQWK %s  READBACK %s\nTRAFFIC %-4s  INTRUDER %-12s  RANGE %5.0fm\nATC DECISION %-14s",
   state.Phase,ac.Phase or "COLD",state.Altitude,state.Airspeed,state.Heading,state.Pitch,state.Roll,state.VerticalSpeed,
