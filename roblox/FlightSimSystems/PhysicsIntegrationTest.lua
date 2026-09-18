@@ -134,6 +134,14 @@ local function run()
  check((normalPhysics.ControlFeel.PhysicsPitchAuthority or 0)>=0,"Physics must expose effective pitch control authority")
  check((normalPhysics.ControlFeel.PhysicsYawAuthority or 0)>=0,"Physics must expose effective yaw control authority")
  check((degradedPhysics.ControlFeel.PhysicsRollAuthority or 0)<(normalPhysics.ControlFeel.PhysicsRollAuthority or 0),"hydraulic degradation must propagate into Physics roll-authority telemetry")
+ local rudderNormal=baseState(); rudderNormal.Surface.Rudder=1; rudderNormal.ControlFeel={RudderAuthority=1}
+ Physics.new(rudderNormal):Step(1/60)
+ local rudderFailed=baseState(); rudderFailed.Surface.Rudder=1; rudderFailed.ControlFeel={RudderAuthority=0.15}
+ Physics.new(rudderFailed):Step(1/60)
+ check(math.abs(rudderFailed.YawRate)<math.abs(rudderNormal.YawRate),"reduced rudder authority must reduce yaw response")
+ check((rudderFailed.ControlFeel.PhysicsYawAuthority or 0)<(rudderNormal.ControlFeel.PhysicsYawAuthority or 0),"rudder hydraulic degradation must propagate into Physics yaw-authority telemetry")
+ local yawDamperWeak=rudderFailed.Sideslip=6; Physics.new(rudderFailed):Step(1/60)
+ check(math.abs(rudderFailed.Sideslip)<=12,"rudder-authority degradation must keep sideslip bounded")
 
  local yawState=baseState()
  yawState.Yaw=10
