@@ -28,8 +28,10 @@ function Electrical:Step(dt)
  local shed=not (e.Bus1 and e.Bus2) or (e.Battery and not primary)
  e.LoadShed.NonEssential=shed; e.LoadShed.Display=not (e.Bus1 and e.Bus2); e.LoadShed.Avionics=not e.Bus1 and not e.Bus2
  x.ElectricalState=x.ElectricalState or {}
- x.ElectricalState.Source1=(ext and "EXTERNAL") or (apuGen and "APU_GEN") or (g1 and "GEN1") or ((e.Battery and x.BatteryCharge>0) and "BATTERY") or "NONE"
- x.ElectricalState.Source2=(ext and "EXTERNAL") or (apuGen and "APU_GEN") or (g2 and "GEN2") or ((e.Battery and x.BatteryCharge>0) and "BATTERY") or "NONE"
+ local source1=(ext and "EXTERNAL") or (apuGen and "APU_GEN") or (g1 and "GEN1") or (g2 and "GEN2_TRANSFER") or ((e.Battery and x.BatteryCharge>0) and "BATTERY") or "NONE"
+ local source2=(ext and "EXTERNAL") or (apuGen and "APU_GEN") or (g2 and "GEN2") or (g1 and "GEN1_TRANSFER") or ((e.Battery and x.BatteryCharge>0) and "BATTERY") or "NONE"
+ x.ElectricalState.Source1=source1
+ x.ElectricalState.Source2=source2
  x.ElectricalState.APUGenerator=apuGen==true
  x.ElectricalState.Generator1=g1==true; x.ElectricalState.Generator2=g2==true
  x.ElectricalState.ExternalPower=ext
