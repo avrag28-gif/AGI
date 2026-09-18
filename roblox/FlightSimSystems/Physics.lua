@@ -69,17 +69,18 @@ function Physics:Step(dt)
  x.ControlFeel.PhysicsPitchAuthority=pitchAuthority
  x.ControlFeel.PhysicsYawAuthority=yawAuthority
  local pCtrl=ele*9*qf; local rCtrl=ail*28*qf; local yCtrl=rud*9*qf
+ -- Surface deflection is already the effective control input after hydraulic,
+ -- failure, manual-reversion, and blowdown limits in FlightControls. Do not
+ -- multiply it by ControlFeel authority again: that would double-apply the
+ -- same hydraulic/failure attenuation. Only stall/high-AoA effectiveness is
+ -- applied here as an aerodynamic factor.
+ local controlEffectiveness=stallControlFactor
+ pCtrl*=controlEffectiveness; rCtrl*=controlEffectiveness; yCtrl*=controlEffectiveness
  -- Rudder-induced yaw and sideslip are coupled: yawing the aircraft creates beta,
  -- while existing beta produces a restoring yawing tendency. Keep this coupling
  -- explicit so rudder, yaw-damper and engine-out behavior cannot be reduced to a
  -- single independent yaw-rate command.
- local rudderYawAuthority=clamp(yawAuthority*stallControlFactor,0,1)
- local aileronRollAuthority=clamp(rollAuthority*stallControlFactor,0,1)
- local elevatorPitchAuthority=clamp(pitchAuthority*stallControlFactor,0,1)
- pCtrl*=elevatorPitchAuthority; rCtrl*=aileronRollAuthority; yCtrl*=rudderYawAuthority
- -- FlightControls has already applied hydraulic/failure authority to the surface
- -- deflection. Physics applies the same effective authority to aerodynamic moments
- -- exactly once, preserving the failure/degradation path end-to-end.
+ local rudderYawAuthority=controlEffectiveness
 
  local pr=finite(x.PitchRate,0); local rr=finite(x.RollRate,0); local yr=finite(x.YawRate,0)
  if ground then local auth=clamp((speedKts-55)/40,0.1,1); pr=approach(pr,pCtrl*auth+0.05*turbP,7,dt); rr=approach(rr,rCtrl*clamp(speedKts/45,0,1)+0.05*turbR,8,dt); yr=finite((x.GroundSteering or {}).YawRate,0); x.Sideslip=approach(finite(x.Sideslip,0),clamp(crosswind*0.03,-3,3),4,dt)
@@ -94,7 +95,11 @@ function Physics:Step(dt)
   local bankStability=-bank*0.045*qf
   yr=approach(yr,turn*.32+yCtrl-beta*.95-yr*.72-ail*1.4*qf+asymmetricYaw+clamp(crosswind*.015,-.9,.9),5.5,dt)
   rr=approach(rr,rCtrl+betaRoll+bankStability-rr*.58*qf+.25*turbR,7,dt)
-  pr=approach(pr,pCtrl-(aoa-(2.5+clamp(flap*1.5,0,1.5)))*.30-clamp(((speedKts-(125+flap*20))/35)*.65,-3.5,3.5)-pr*.35*qf+.25*turbP,5.5,dt)
+  local cg=clamp(finite(x.CGPercentMAC,25),15,35)
+  local cgOffset=(cg-25)/10
+  local pitchStability=clamp(1-0.35*cgOffset,0.55,1.35)
+  x.AeroStability.PitchStabilityFactor=pitchStability
+  pr=approach(pr,pCtrl-(aoa-(2.5+clamp(flap*1.5,0,1.5)))*.30*pitchStability-clamp(((speedKts-(125+flap*20))/35)*.65,-3.5,3.5)-pr*.35*qf+.25*turbP,5.5,dt)
   x.Sideslip=beta; x.Beta=beta; x.TurnCoordination=clamp(1-math.abs(beta)/6,0,1); x.AeroStability.RollRestoringRate=bankStability; x.AeroStability.SideslipRollRate=betaRoll
  end
  x.EngineIntegration.YawRateContribution=ground and 0 or clamp(engineYawMoment*engineYawMomentGain*qf,-5,5)
