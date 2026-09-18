@@ -64,3 +64,28 @@ Recommended 737-style setup:
 | VS | MCPVerticalSpeed | 100 | -6000 | 6000 | false |
 
 A click advances by `Step*Direction`. The client reads the aircraft model's live `FlightSimMCP*` attribute before each click, while the server remains authoritative and applies validation/clamping.
+
+## Physical rotary drag
+
+MCP SPD/HDG/ALT/VS knobs can use a `DragDetector` under the same Part/Model.
+
+Required attributes remain:
+- `Interaction = "MCP_KNOB"`
+- `Command`
+- `Step`
+- `Min` / `Max`
+- `Direction`
+- optional `Wrap`
+- optional `ValueAttribute`
+
+Optional:
+- `DegreesPerStep` — default `3.6` degrees of physical rotation per logical step.
+- `RotateAxis` — `X`, `Y`, or `Z`; default is `Y`.
+
+Recommended starting values:
+- SPD: Step 1 kt, DegreesPerStep 3.6
+- HDG: Step 1°, DegreesPerStep 3.6, Wrap true
+- ALT: Step 100 ft, DegreesPerStep 3.6
+- VS: Step 100 ft/min, DegreesPerStep 3.6
+
+Roblox's DragDetector supports `RotateAxis` for one-dimensional rotation. This implementation uses its custom response path so simulator state remains authoritative rather than letting the detector directly control flight state.
