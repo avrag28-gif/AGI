@@ -191,6 +191,22 @@ workspace.DescendantAdded:Connect(function(obj)
  end
 end)
 
+local function syncMCPKnobValues()
+ for obj in pairs(rotaryBound) do
+  if obj and obj.Parent and obj:GetAttribute("Interaction")=="MCP_KNOB" then
+   local aircraft=findAircraftForControl(obj)
+   local commandName=obj:GetAttribute("Command")
+   local attr=obj:GetAttribute("ValueAttribute")
+   if type(attr)~="string" or attr=="" then attr=knobValueAttribute(commandName) end
+   if aircraft and attr then
+    local value=aircraft:GetAttribute(attr)
+    if type(value)=="number" then obj:SetAttribute("Value",value) end
+   end
+  end
+ end
+end
+
+
 local highlight=Instance.new("Highlight")
 highlight.Name="FlightSimControlHighlight"
 highlight.Enabled=false
@@ -199,6 +215,7 @@ highlight.Parent=workspace
 
 local mouse=player:GetMouse()
 RunService.RenderStepped:Connect(function()
+ syncMCPKnobValues()
  local target=mouse.Target
  if target and target:GetAttribute("Command") then
   highlight.Adornee=target
