@@ -6,14 +6,22 @@ local gui=Instance.new("ScreenGui"); gui.Name="FlightSimInstruments"; gui.ResetO
 local panel=Instance.new("Frame"); panel.Name="PFD"; panel.Size=UDim2.fromOffset(420,430); panel.Position=UDim2.new(0,18,1,-448); panel.BackgroundTransparency=0.12; panel.Parent=gui
 local title=Instance.new("TextLabel"); title.Size=UDim2.new(1,0,0,30); title.BackgroundTransparency=1; title.Text="B737-800  •  FLIGHT DECK"; title.TextSize=18; title.Font=Enum.Font.GothamBold; title.TextXAlignment=Enum.TextXAlignment.Left; title.Parent=panel
 local readout=Instance.new("TextLabel"); readout.Name="Readout"; readout.Position=UDim2.fromOffset(12,36); readout.Size=UDim2.new(1,-24,1,-48); readout.BackgroundTransparency=1; readout.TextSize=14; readout.Font=Enum.Font.Code; readout.TextXAlignment=Enum.TextXAlignment.Left; readout.TextYAlignment=Enum.TextYAlignment.Top; readout.Text="WAITING FOR SIMULATION..."; readout.Parent=panel
-local help=Instance.new("TextLabel"); help.Size=UDim2.new(0,620,0,160); help.Position=UDim2.new(1,-638,1,-178); help.BackgroundTransparency=0.18; help.TextSize=13; help.Font=Enum.Font.Gotham; help.TextXAlignment=Enum.TextXAlignment.Left; help.TextYAlignment=Enum.TextYAlignment.Top; help.Text="INPUT\nW/S elevator   A/D aileron   Q/E rudder   Z/C nose-wheel\nF flap   G gear   B parking brake   1/2 starter   R/T fuel   Y/U ignition\nP battery   O APU   L AP   J A/T   X TOGA/go-around\nM/N MCP speed -/+5   K/I MCP VS -/+250\nTraffic display: TA/RA and ATC conflict state are shown when available."; help.Parent=gui
-local flap=0; local gearDown=true; local parkingBrake=true; local battery=false; local apu=false; local ap=false; local autoThrottle=false; local mcpSpeed=250; local mcpVS=0
+local help=Instance.new("TextLabel"); help.Size=UDim2.new(0,620,0,160); help.Position=UDim2.new(1,-638,1,-178); help.BackgroundTransparency=0.18; help.TextSize=13; help.Font=Enum.Font.Gotham; help.TextXAlignment=Enum.TextXAlignment.Left; help.TextYAlignment=Enum.TextYAlignment.Top; help.Text="INPUT\nW/S elevator   A/D aileron   Q/E rudder   Z/C nose-wheel\nF flap   G gear   B parking brake   1/2 starter   R/T fuel   Y/U ignition\nP battery   O APU   L AP   J A/T   X TOGA/go-around\nM/N MCP speed -/+5   K/I MCP VS -/+250\nThrottle: PageUp/PageDown (both engines), [/] (both engines) . help.Parent=gui
+local flap=0; local gearDown=true; local parkingBrake=true; local battery=false; local apu=false; local ap=false; local autoThrottle=false; local mcpSpeed=250; local mcpVS=0; local throttle={[1]=0,[2]=0}; local throttleAccumulator=0
 local starter={[1]=false,[2]=false}; local fuel={[1]=false,[2]=false}; local ignition={[1]=false,[2]=false}; local lastControl={Elevator=999,Aileron=999,Rudder=999,NoseWheelSteering=999}; local controlAccumulator=0
 local function send(name,a,b) command:FireServer(name,a,b) end
 local function updateControls(dt)
  if UserInputService:GetFocusedTextBox() then return end; controlAccumulator+=dt; if controlAccumulator<0.05 then return end; controlAccumulator=0
  local e,a,r,s=0,0,0,0; if UserInputService:IsKeyDown(Enum.KeyCode.W) then e+=1 end; if UserInputService:IsKeyDown(Enum.KeyCode.S) then e-=1 end; if UserInputService:IsKeyDown(Enum.KeyCode.D) then a+=1 end; if UserInputService:IsKeyDown(Enum.KeyCode.A) then a-=1 end; if UserInputService:IsKeyDown(Enum.KeyCode.E) then r+=1 end; if UserInputService:IsKeyDown(Enum.KeyCode.Q) then r-=1 end; if UserInputService:IsKeyDown(Enum.KeyCode.C) then s+=1 end; if UserInputService:IsKeyDown(Enum.KeyCode.Z) then s-=1 end
  local values={Elevator=e,Aileron=a,Rudder=r,NoseWheelSteering=s}; for name,value in pairs(values) do if lastControl[name]~=value then lastControl[name]=value; if name=="NoseWheelSteering" then send(name,value) else send("Control",name,value) end end end
+ throttleAccumulator+=0.05
+ local up=UserInputService:IsKeyDown(Enum.KeyCode.PageUp) or UserInputService:IsKeyDown(Enum.KeyCode.RightBracket)
+ local down=UserInputService:IsKeyDown(Enum.KeyCode.PageDown) or UserInputService:IsKeyDown(Enum.KeyCode.LeftBracket)
+ local rate=up and 0.025 or (down and -0.025 or 0)
+ if rate~=0 then
+  throttle[1]=math.clamp(throttle[1]+rate,0,1); throttle[2]=math.clamp(throttle[2]+rate,0,1)
+  send("Throttle",1,throttle[1]); send("Throttle",2,throttle[2])
+ end
 end
 UserInputService.InputBegan:Connect(function(input,processed)
  if processed or UserInputService:GetFocusedTextBox() then return end; local k=input.KeyCode
