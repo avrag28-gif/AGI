@@ -252,10 +252,13 @@ local function configurePhysicalMCPControls()
 			if target then break end
 		end
 		if target then
-			if target:GetAttribute("Command")==nil then target:SetAttribute("Command",mapping.command) end
-			if target:GetAttribute("A")==nil then target:SetAttribute("A",mapping.a) end
-			if target:GetAttribute("Toggle")==nil and mapping.command=="AP" then target:SetAttribute("Toggle",true) end
-			if target:GetAttribute("Toggle")==nil and mapping.command=="AutoThrottle" then target:SetAttribute("Toggle",true) end
+			local detector=target:FindFirstChildWhichIsA("ClickDetector",true)
+			local prompt=target:FindFirstChildWhichIsA("ProximityPrompt",true)
+			local control=detector or prompt or target
+			if control:GetAttribute("Command")==nil then control:SetAttribute("Command",mapping.command) end
+			if control:GetAttribute("A")==nil then control:SetAttribute("A",mapping.a) end
+			if control:GetAttribute("Toggle")==nil and mapping.command=="AP" then control:SetAttribute("Toggle",true) end
+			if control:GetAttribute("Toggle")==nil and mapping.command=="AutoThrottle" then control:SetAttribute("Toggle",true) end
 		end
 	end
 end
