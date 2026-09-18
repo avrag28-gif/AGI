@@ -1,35 +1,39 @@
-# Cockpit display and MCP binding
+# Cockpit display integration
 
-The aircraft bridge exposes simulator state as Model attributes so cockpit presentation scripts do not need direct access to server simulation objects.
+The aircraft model bridge exposes FlightSim* Model attributes. A client display script can render these attributes onto physical cockpit display Parts with SurfaceGui.
 
-## Physical displays
+## Optional display Parts
+- PFD: PFDDisplay, CaptainPFD, LeftPFD
+- ND: NDDisplay, CaptainND, LeftND
+- EICAS: EICASDisplay, CenterEICAS, EngineDisplay
 
-Tag the aircraft Model with `FlightSimAircraft` and set `FlightSimAircraftId` to the runtime aircraft id.
+The client creates a SurfaceGui only when one of these Parts exists. No cockpit geometry is required by the simulator.
 
-Optional BasePart names recognized by `FlightSimClient.client.lua`:
+Roblox documents SurfaceGui as an in-world UI container that renders on a Part face; TextLabel can be used inside it for text-based instrument output.
 
-- PFD: `PFDDisplay`, `CaptainPFD`, `LeftPFD`
-- ND: `NDDisplay`, `CaptainND`, `LeftND`
-- EICAS: `EICASDisplay`, `CenterEICAS`, `EngineDisplay`
+## MCP / AFDS attributes
+- FlightSimMCPHeading
+- FlightSimMCPAltitude
+- FlightSimMCPSpeed
+- FlightSimMCPVerticalSpeed
+- FlightSimMCPMode
+- FlightSimMCPFlightDirector
+- FlightSimAPEnabled
+- FlightSimAPMode
+- FlightSimAPTargetAltitude
+- FlightSimATEnabled
+- FlightSimATMode
+- FlightSimATProtection
 
-The client creates a `SurfaceGui` and `TextLabel` only when a matching part exists.
+These are presentation attributes. Command authority remains on the server through the existing command router.
 
-## MCP attributes
+## Physical control interaction
 
-The aircraft Model receives:
+Use the existing CockpitInteraction.client.lua contract: Command, A, B, and optional Toggle.
+Examples include MCPHeading, MCPAltitude, MCPSpeed, MCPVerticalSpeed, MCPMode, AP, AutoThrottle, and GoAround.
 
-- `FlightSimMCPHeading`
-- `FlightSimMCPAltitude`
-- `FlightSimMCPSpeed`
-- `FlightSimMCPVerticalSpeed`
-- `FlightSimMCPHeadingMode`
-- `FlightSimMCPAltitudeMode`
-- `FlightSimMCPVerticalSpeedMode`
-- `FlightSimMCPFlightDirector`
+## Orientation
 
-Cockpit interaction can use the command attributes documented in `CockpitControlSetup.md`: `MCPHeading`, `MCPAltitude`, `MCPSpeed`, `MCPVerticalSpeed`, `MCPMode`, `AutoThrottle`, and `GoAround`.
+SurfaceGui.Face defaults to Front. If a physical display faces another direction, set the SurfaceGui face or adapt the display binder to the model orientation. AlwaysOnTop is kept false so the display behaves like a physical surface and can be occluded by cockpit geometry.
 
-## Motor6D animation
-
-Optional mechanical animations use the documented Motor6D names in `AircraftModelBinder.lua`. The animation is presentation-only; the simulation state remains authoritative.
-
+The display system is a simulator presentation layer, not a certified Boeing avionics implementation.
