@@ -367,7 +367,9 @@ end)
 
 telemetry.OnClientEvent:Connect(function(state)
  refreshPhysicalDisplays()
- local e1,e2=state.Engines[1],state.Engines[2]
+ state=state or {}
+ local e1=((state.Engines or {})[1]) or {}
+ local e2=((state.Engines or {})[2]) or {}
  local gs=state.GroundSteering or {}
  local at=state.AutoThrottle or {}
  local apState=state.Autopilot or {}
@@ -375,6 +377,14 @@ telemetry.OnClientEvent:Connect(function(state)
  local ac=state.ATC or {}
  local td=state.TCASDisplay or state.TCAS or {}
  local dec=state.ATCDecision or {}
+ local navigation=state.Navigation or {}
+ local irs=state.IRS or {}
+ local avionics=state.Avionics or {}
+ local hydraulic=state.Hydraulic or {A={},B={},Standby={}}
+ local electrical=state.Electrical or {}
+ local gearStatus=state.GearStatus or {}
+ local controls=state.Controls or {}
+ local brakes=state.Brakes or {}
  local messages=ac.LastMessage or ""
  if #messages>36 then messages=messages:sub(1,36).."…" end
  local trafficLevel=td.HighestLevel or "NONE"
@@ -389,8 +399,8 @@ telemetry.OnClientEvent:Connect(function(state)
  local atOn=at.Enabled==true
 
  pfd.Text=string.format("PFD\nALT %5.0fft  IAS %4.0fkt\nHDG %03.0f°  PITCH %+4.1f°\nROLL %+4.1f°  VS %+5.0f\nAP %-3s  AT %-3s",state.Altitude,state.Airspeed,state.Heading,state.Pitch,state.Roll,state.VerticalSpeed,apState.Enabled and "ON" or "OFF",at.Enabled and "ON" or "OFF")
- nd.Text=string.format("ND\nMODE %-6s  WPT %d\nDTW %5.1f  BRG %03.0f\nXTK %+5.2f  IRS %-3s\nRADAR %-3s  TCAS %-3s",state.Navigation.Mode or "HDG",state.Navigation.ActiveWaypoint or 0,state.Navigation.DistanceToWaypoint or 0,state.Navigation.BearingToWaypoint or 0,state.Navigation.CrossTrackError or 0,state.IRS.Mode or "OFF",state.Avionics.WeatherRadar and "ON" or "OFF",trafficText)
- eicas.Text=string.format("EICAS\nENG1 N1 %5.1f N2 %5.1f EGT %4.0f\nENG2 N1 %5.1f N2 %5.1f EGT %4.0f\nHYD A %4.0f  B %4.0f  STBY %4.0f\nELEC B1 %s B2 %s APU %s\nGEAR %s  FLAP %3.0f%%\nWARN %s  CAUT %s",e1.N1,e1.N2,e1.EGT,e2.N1,e2.N2,e2.EGT,state.Hydraulic.A.Pressure,state.Hydraulic.B.Pressure,state.Hydraulic.Standby.Pressure,tostring(state.Electrical.Bus1),tostring(state.Electrical.Bus2),tostring(state.Electrical.APUGeneratorAvailable),state.GearStatus.Warning and "WARN" or "OK",(state.Controls.Flap or 0)*100,tostring((state.Annunciation or {}).MasterWarning or false),tostring((state.Annunciation or {}).MasterCaution or false))
+ nd.Text=string.format("ND\nMODE %-6s  WPT %d\nDTW %5.1f  BRG %03.0f\nXTK %+5.2f  IRS %-3s\nRADAR %-3s  TCAS %-3s",navigation.Mode or "HDG",navigation.ActiveWaypoint or 0,navigation.DistanceToWaypoint or 0,navigation.BearingToWaypoint or 0,navigation.CrossTrackError or 0,irs.Mode or "OFF",avionics.WeatherRadar and "ON" or "OFF",trafficText)
+ eicas.Text=string.format("EICAS\nENG1 N1 %5.1f N2 %5.1f EGT %4.0f\nENG2 N1 %5.1f N2 %5.1f EGT %4.0f\nHYD A %4.0f  B %4.0f  STBY %4.0f\nELEC B1 %s B2 %s APU %s\nGEAR %s  FLAP %3.0f%%\nWARN %s  CAUT %s",e1.N1,e1.N2,e1.EGT,e2.N1,e2.N2,e2.EGT,hydraulic.A.Pressure,hydraulic.B.Pressure,hydraulic.Standby.Pressure,tostring(electrical.Bus1),tostring(electrical.Bus2),tostring(electrical.APUGeneratorAvailable),gearStatus.Warning and "WARN" or "OK",(controls.Flap or 0)*100,tostring((state.Annunciation or {}).MasterWarning or false),tostring((state.Annunciation or {}).MasterCaution or false))
  if physicalDisplays.PFD then
 	local label=physicalDisplays.PFD:FindFirstChild("Display")
 	if label then label.Text=pfd.Text end
@@ -426,7 +436,7 @@ telemetry.OnClientEvent:Connect(function(state)
   ei.ThrustAsymmetry or 0,ei.YawMoment or 0,tostring(ei.EngineOut),
   tostring(state.Electrical.Battery),tostring(state.Electrical.APU),tostring(state.Electrical.Bus1),tostring(state.Electrical.Bus2),
   state.Hydraulic.A.Pressure or 0,state.Hydraulic.B.Pressure or 0,state.Fuel.Total,
-  state.Gear.Nose and "DOWN" or "UP",state.Controls.Flap*100,state.Brakes.Parking and "SET" or "OFF",
+  ((state.Gear or {}).Nose) and "DOWN" or "UP",state.Controls.Flap*100,brakes.Parking and "SET" or "OFF",
   gs.Available and "AVAIL" or "OFF",gs.NoseWheelAngle or 0,gs.YawRate or 0,
   tostring(apState.Enabled),apState.Mode or "OFF",apState.TargetAltitude or 0,
   tostring(at.Enabled),at.Mode or "OFF",at.TargetSpeed or 0,at.SpeedError or 0,
@@ -435,4 +445,4 @@ telemetry.OnClientEvent:Connect(function(state)
  )
 end)
 
-RunService.RenderStepped:Connect(updateControls)
+RunService.PreRender:Connect(updateControls)
