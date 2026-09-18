@@ -69,6 +69,9 @@ end
 local function activate(obj)
  local c=obj:GetAttribute("Command")
  if type(c)~="string" or c=="" then return end
+ if obj:GetAttribute("Interaction")=="MCP_KNOB" and obj:FindFirstChildWhichIsA("DragDetector") then
+  return
+ end
  if obj:GetAttribute("Interaction")=="MCP_KNOB" then
   activateKnob(obj,c)
   return
@@ -84,6 +87,65 @@ local function activate(obj)
  send(c,a,b)
 end
 
+local rotaryBound={}
+
+local function setupRotaryKnob(obj)
+ if rotaryBound[obj] then return end
+ if obj:GetAttribute("Interaction")~="MCP_KNOB" then return end
+ local detector=obj:FindFirstChildWhichIsA("DragDetector")
+ if not detector then return end
+ local commandName=obj:GetAttribute("Command")
+ if type(commandName)~="string" or commandName=="" then return end
+ local aircraft=findAircraftForControl(obj)
+ if not aircraft then return end
+ detector.DragStyle=Enum.DragDetectorDragStyle.RotateAxis
+ detector.ResponseStyle=Enum.DragDetectorResponseStyle.Custom
+ detector.Axis=Vector3.yAxis
+ detector.Enabled=true
+ local axisName=obj:GetAttribute("RotateAxis")
+ if axisName=="X" then detector.Axis=Vector3.xAxis elseif axisName=="Z" then detector.Axis=Vector3.zAxis end
+ local minValue=obj:GetAttribute("Min")
+ local maxValue=obj:GetAttribute("Max")
+ local step=finite(obj:GetAttribute("Step"),1)
+ local direction=finite(obj:GetAttribute("Direction"),1)
+ local degreesPerStep=finite(obj:GetAttribute("DegreesPerStep"),3.6)
+ if degreesPerStep<=0 then degreesPerStep=3.6 end
+ local startFrame,startValue,lastSent
+ rotaryBound[obj]=true
+ detector.DragStart:Connect(function(p)
+  if p~=player then return end
+  startFrame=detector.DragFrame
+  local attr=obj:GetAttribute("ValueAttribute")
+  if type(attr)~="string" or attr=="" then attr=knobValueAttribute(commandName) end
+  startValue=attr and finite(aircraft:GetAttribute(attr),nil)
+  if startValue==nil then startValue=finite(obj:GetAttribute("Value"),0) end
+  lastSent=startValue
+ end)
+ detector.DragContinue:Connect(function(p)
+  if p~=player or not startFrame or startValue==nil then return end
+  local relative=startFrame:ToObjectSpace(detector.DragFrame)
+  local rx,ry,rz=relative:ToOrientation()
+  local angle=ry
+  if axisName=="X" then angle=rx elseif axisName=="Z" then angle=rz end
+  local detents=math.floor((angle*180/math.pi)/degreesPerStep+0.5)
+  local nextValue=startValue+detents*step*direction
+  if type(minValue)=="number" and type(maxValue)=="number" then
+   if obj:GetAttribute("Wrap")==true then
+    local span=maxValue-minValue
+    if span>0 then while nextValue>maxValue do nextValue-=span end while nextValue<minValue do nextValue+=span end end
+   else nextValue=math.clamp(nextValue,minValue,maxValue) end
+  end
+  nextValue=math.round(nextValue/step)*step
+  if nextValue~=lastSent then
+   lastSent=nextValue
+   obj:SetAttribute("Value",nextValue)
+   send(commandName,nextValue,nil)
+  end
+ end)
+ detector.DragEnd:Connect(function(p)
+  if p==player then startFrame=nil startValue=nil lastSent=nil end
+ end)
+end
 local function bindDetector(detector)
  if bound[detector] then return end
  local parent=detector.Parent
@@ -101,14 +163,17 @@ local function bindDetector(detector)
 end
 
 for _,obj in ipairs(workspace:GetDescendants()) do
- if obj:IsA("ClickDetector") or obj:IsA("ProximityPrompt") then
-  bindDetector(obj)
- end
+ if obj:IsA("ClickDetector") or obj:IsA("ProximityPrompt") then bindDetector(obj) end
+ if obj:IsA("BasePart") or obj:IsA("Model") then setupRotaryKnob(obj) end
 end
 
 workspace.DescendantAdded:Connect(function(obj)
  if obj:IsA("ClickDetector") or obj:IsA("ProximityPrompt") then
   task.defer(bindDetector,obj)
+ elseif obj:IsA("DragDetector") then
+  task.defer(function() setupRotaryKnob(obj.Parent) end)
+ elseif obj:IsA("BasePart") or obj:IsA("Model") then
+  task.defer(function() setupRotaryKnob(obj) end)
  end
 end)
 
