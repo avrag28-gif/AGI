@@ -69,14 +69,25 @@ function Physics:Step(dt)
  x.ControlFeel.PhysicsPitchAuthority=pitchAuthority
  x.ControlFeel.PhysicsYawAuthority=yawAuthority
  local pCtrl=ele*9*qf; local rCtrl=ail*28*qf; local yCtrl=rud*9*qf
- -- FlightControls has already applied hydraulic/failure authority to the surface deflection;
- -- do not multiply it again here. These telemetry fields are for end-to-end observability.
+ -- Rudder-induced yaw and sideslip are coupled: yawing the aircraft creates beta,
+ -- while existing beta produces a restoring yawing tendency. Keep this coupling
+ -- explicit so rudder, yaw-damper and engine-out behavior cannot be reduced to a
+ -- single independent yaw-rate command.
+ local rudderYawAuthority=clamp(yawAuthority*stallControlFactor,0,1)
+ local aileronRollAuthority=clamp(rollAuthority*stallControlFactor,0,1)
+ local elevatorPitchAuthority=clamp(pitchAuthority*stallControlFactor,0,1)
+ pCtrl*=elevatorPitchAuthority; rCtrl*=aileronRollAuthority; yCtrl*=rudderYawAuthority
+ -- FlightControls has already applied hydraulic/failure authority to the surface
+ -- deflection. Physics applies the same effective authority to aerodynamic moments
+ -- exactly once, preserving the failure/degradation path end-to-end.
 
  local pr=finite(x.PitchRate,0); local rr=finite(x.RollRate,0); local yr=finite(x.YawRate,0)
  if ground then local auth=clamp((speedKts-55)/40,0.1,1); pr=approach(pr,pCtrl*auth+0.05*turbP,7,dt); rr=approach(rr,rCtrl*clamp(speedKts/45,0,1)+0.05*turbR,8,dt); yr=finite((x.GroundSteering or {}).YawRate,0); x.Sideslip=approach(finite(x.Sideslip,0),clamp(crosswind*0.03,-3,3),4,dt)
  else
   local turn=0; if speedMS>15 then turn=math.deg(G*math.tan(math.rad(bank))/speedMS) end; turn=clamp(turn,-12,12)
-  local beta=finite(x.Sideslip,finite(x.Beta,0)); local windBeta=clamp(crosswind/math.max(effectiveAirspeed,60)*57.2958,-5,5); local desired=clamp(rud*4.5+turn*.1-rCtrl*.035+windBeta*.12,-10,10)
+  local beta=finite(x.Sideslip,finite(x.Beta,0)); local windBeta=clamp(crosswind/math.max(effectiveAirspeed,60)*57.2958,-5,5)
+  local rudderBetaCommand=rud*4.5*rudderYawAuthority
+  local desired=clamp(rudderBetaCommand+turn*.1-rCtrl*.035+windBeta*.12,-10,10)
   beta=clamp(beta+((desired-beta)*2.8-beta*.55-yr*.045)*dt,-12,12)
   -- Engine-out yaw is driven by the actual thrust difference and the configured engine arm.\n  -- Do not normalize it by total thrust for the moment itself: an engine at idle produces\n  -- little asymmetric yaw, while a high-thrust failure produces a larger moment.\n  local asymmetricYaw=clamp(engineYawMoment*engineYawMomentGain*qf,-5,5)
   local betaRoll=-beta*0.65*qf
