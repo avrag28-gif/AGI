@@ -137,6 +137,71 @@ local function findPhysicalDisplay(names)
 end
 
 local physicalDisplays={}
+local physicalMCP=nil
+local modeLights={}
+
+local function findAircraftPart(names)
+	local aircraft=findLocalAircraft()
+	if not aircraft then return nil end
+	for _,name in ipairs(names) do
+		local obj=aircraft:FindFirstChild(name,true)
+		if obj and obj:IsA("BasePart") then return obj end
+	end
+	return nil
+end
+
+local function ensureMCPDisplay()
+	local part=findAircraftPart({"MCPDisplay","MCPAnnunciator","AutopilotDisplay"})
+	if not part then return nil end
+	local sg=part:FindFirstChild("FlightSimMCP")
+	if not sg then
+		sg=Instance.new("SurfaceGui")
+		sg.Name="FlightSimMCP"
+		sg.Face=Enum.NormalId.Front
+		sg.AlwaysOnTop=false
+		sg.LightInfluence=0
+		sg.MaxDistance=100
+		sg.PixelsPerStud=120
+		sg.CanvasSize=Vector2.new(900,220)
+		sg.Parent=part
+		local label=Instance.new("TextLabel")
+		label.Name="Display"
+		label.Size=UDim2.fromScale(1,1)
+		label.BackgroundTransparency=1
+		label.TextColor3=Color3.fromRGB(255,170,0)
+		label.Font=Enum.Font.Code
+		label.TextSize=26
+		label.TextXAlignment=Enum.TextXAlignment.Center
+		label.TextYAlignment=Enum.TextYAlignment.Center
+		label.Parent=sg
+	end
+	return sg
+end
+
+local function findModeLight(names)
+	local aircraft=findLocalAircraft()
+	if not aircraft then return nil end
+	for _,name in ipairs(names) do
+		local obj=aircraft:FindFirstChild(name,true)
+		if obj and (obj:IsA("BasePart") or obj:IsA("PointLight") or obj:IsA("SurfaceLight")) then return obj end
+	end
+	return nil
+end
+
+local function setPhysicalLight(obj,on)
+	if not obj then return end
+	if obj:IsA("BasePart") then
+		obj.Material=on and Enum.Material.Neon or Enum.Material.SmoothPlastic
+		obj.Color=on and Color3.fromRGB(255,170,0) or Color3.fromRGB(45,45,45)
+		obj.Transparency=on and 0 or math.clamp(obj.Transparency,0,0.8)
+	else
+		obj.Enabled=on
+		if obj:IsA("PointLight") or obj:IsA("SurfaceLight") then
+			obj.Color=Color3.fromRGB(255,170,0)
+		end
+	end
+end
+
 
 local function ensureSurfaceDisplay(part,name)
 	if not part then return nil end
@@ -172,6 +237,10 @@ local function refreshPhysicalDisplays()
 	physicalDisplays.PFD=pfd or physicalDisplays.PFD
 	physicalDisplays.ND=nd or physicalDisplays.ND
 	physicalDisplays.EICAS=eicas or physicalDisplays.EICAS
+	physicalMCP=ensureMCPDisplay() or physicalMCP
+	modeLights.AP=findModeLight({"APModeLight","AutopilotLight","APAnnunciator"})
+	modeLights.AT=findModeLight({"ATModeLight","AutoThrottleLight","ATAnnunciator"})
+	modeLights.FD=findModeLight({"FDModeLight","FlightDirectorLight","FDAnnunciator"})
 end
 
 local function send(name,a,b)
@@ -279,6 +348,11 @@ telemetry.OnClientEvent:Connect(function(state)
  local decisionText=dec.Instruction or "NONE"
  local intruder=td.ClosestIntruder or dec.ConflictWith or "-"
  local range=td.ClosestRangeM or dec.DistanceM or 0
+ local mcp=state.MCP or {}
+ local apMode=apState.Mode or state.Autopilot.Mode or "OFF"
+ local fd=(mcp.FlightDirector==true) or (apState.FlightDirector==true)
+ local apOn=apState.Enabled==true
+ local atOn=at.Enabled==true
 
  pfd.Text=string.format("PFD\nALT %5.0fft  IAS %4.0fkt\nHDG %03.0f°  PITCH %+4.1f°\nROLL %+4.1f°  VS %+5.0f\nAP %-3s  AT %-3s",state.Altitude,state.Airspeed,state.Heading,state.Pitch,state.Roll,state.VerticalSpeed,apState.Enabled and "ON" or "OFF",at.Enabled and "ON" or "OFF")
  nd.Text=string.format("ND\nMODE %-6s  WPT %d\nDTW %5.1f  BRG %03.0f\nXTK %+5.2f  IRS %-3s\nRADAR %-3s  TCAS %-3s",state.Navigation.Mode or "HDG",state.Navigation.ActiveWaypoint or 0,state.Navigation.DistanceToWaypoint or 0,state.Navigation.BearingToWaypoint or 0,state.Navigation.CrossTrackError or 0,state.IRS.Mode or "OFF",state.Avionics.WeatherRadar and "ON" or "OFF",trafficText)
@@ -295,6 +369,21 @@ telemetry.OnClientEvent:Connect(function(state)
 	local label=physicalDisplays.EICAS:FindFirstChild("Display")
 	if label then label.Text=eicas.Text end
  end
+ if physicalMCP then
+	local label=physicalMCP:FindFirstChild("Display")
+	if label then
+		label.Text=string.format("SPD %03.0f    HDG %03.0f    ALT %05.0f    VS %+04.0f\\nAP %s  AT %s  FD %s\\nMODE %s / %s / %s",
+			mcp.Speed or apState.TargetSpeed or 0,
+			mcp.Heading or apState.TargetHeading or 0,
+			mcp.Altitude or apState.TargetAltitude or 0,
+			mcp.VerticalSpeed or apState.TargetVerticalSpeed or 0,
+			apOn and "ON" or "OFF",atOn and "ON" or "OFF",fd and "ON" or "OFF",
+			mcp.HeadingMode or apMode,mcp.AltitudeMode or apMode,mcp.VerticalSpeedMode or apMode)
+	end
+ end
+ setPhysicalLight(modeLights.AP,apOn)
+ setPhysicalLight(modeLights.AT,atOn)
+ setPhysicalLight(modeLights.FD,fd)
 
  readout.Text=string.format(
   "PHASE %-14s  ATC %-9s\nALT %6.0f ft  IAS %5.0f kt  HDG %6.1f°\nP/R %5.1f/%5.1f°  VS %6.0f fpm\n\nENG1 N1 %5.1f N2 %5.1f EGT %4.0f RUN %s\nENG2 N1 %5.1f N2 %5.1f EGT %4.0f RUN %s\nASYM %+5.2f  YAWM %+7.3f  OUT %s\n\nELEC BAT %s APU %s BUS %s/%s\nHYD A %4.0f psi B %4.0f psi\nFUEL %7.0f  GEAR %s  FLAP %3.0f%%  BRK %s\nSTEER %s %5.1f°  YAW %5.1f°/s\nAP %s %-10s ALT %6.0f\nA/T %s %-14s SPD %6.0f ERR %+5.1f\nPROT %-10s CMD %.2f/%.2f\n\nATC %s  SQWK %s  READBACK %s\nTRAFFIC %-4s  INTRUDER %-12s  RANGE %5.0fm\nATC DECISION %-14s",
