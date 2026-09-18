@@ -40,3 +40,27 @@ MCP targets are pilot selections stored in authoritative aircraft state. Navigat
 Autothrottle telemetry exposes `Enabled`, `Active`, `Mode`, `Protection`, `TargetSpeed`, `SpeedError`, and per-engine throttle commands. During go-around the simulation uses `Mode=TOGA` and commands maximum available engine throttle; this is a game-simulation approximation, not certified Boeing logic.
 
 This is an interaction contract, not a finished 3D cockpit. The aircraft-model pass should name physical controls consistently and add the corresponding attributes/detectors.
+
+
+## 3D MCP knob interaction
+
+For a physical SPD/HDG/ALT/VS selector, put a ClickDetector or ProximityPrompt under the knob Part/Model and add:
+
+- `Interaction = "MCP_KNOB"`
+- `Command = "MCPSpeed"`, `"MCPHeading"`, `"MCPAltitude"`, or `"MCPVerticalSpeed"`
+- `Step` = increment per click
+- `Min` / `Max` = optional hard limits
+- `Direction` = `1` or `-1`
+- `Wrap = true` for cyclic values such as heading
+- `ValueAttribute` = optional model attribute override
+
+Recommended 737-style setup:
+
+| Knob | Command | Step | Min | Max | Wrap |
+|---|---|---:|---:|---:|---|
+| SPD | MCPSpeed | 1 | 60 | 350 | false |
+| HDG | MCPHeading | 1 | 0 | 359 | true |
+| ALT | MCPAltitude | 100 | 0 | 60000 | false |
+| VS | MCPVerticalSpeed | 100 | -6000 | 6000 | false |
+
+A click advances by `Step*Direction`. The client reads the aircraft model's live `FlightSimMCP*` attribute before each click, while the server remains authoritative and applies validation/clamping.
