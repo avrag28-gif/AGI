@@ -43,7 +43,7 @@ function AircraftModelBinder:Bind(id,state)
 	if not id or not state then return false,"invalid binding" end
 	local model=findModel(id)
 	if not model then
-		self.pending[id]=true
+		self.pending[id]=state
 		return false,"aircraft model not found; waiting for tagged model"
 	end
 	local kinematic=model:GetAttribute("FlightSimKinematic")
@@ -60,15 +60,8 @@ function AircraftModelBinder:Unbind(id)
 end
 
 function AircraftModelBinder:Refresh()
-	for id in pairs(self.pending) do
-		self:Bind(id,self._states and self._states[id])
-	end
-end
-
-function AircraftModelBinder:SetStates(states)
-	self._states=states
-	for id,state in pairs(states) do
-		if not self.bindings[id] then self:Bind(id,state) end
+	for id,state in pairs(self.pending) do
+		self:Bind(id,state)
 	end
 end
 
