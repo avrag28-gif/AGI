@@ -34,3 +34,9 @@ It also writes the latest flight values as Model Attributes prefixed with `Fligh
 This bridge does not claim certified 737 dynamics; the aerodynamic coefficients remain explicit game-simulation approximations in `Physics.lua`.
 
 If a future aircraft implementation uses a physically simulated Roblox assembly instead, keep the binder disabled for that model and implement the force/constraint layer separately rather than mixing two independent motion authorities.
+
+## Optional control-surface animation
+
+The binder also supports optional `Motor6D` animation. If the aircraft model contains these Motor6D names, their `Transform` is driven from the authoritative surface state: `LeftAileronMotor`, `RightAileronMotor`, `ElevatorMotor`, `RudderMotor`, `FlapMotor`, `SpeedbrakeMotor`, `NoseGearMotor`, `LeftGearMotor`, and `RightGearMotor`. Missing motors are ignored. `GearAnimationAngle` can override the default 90-degree gear animation angle.
+
+For mechanical aircraft rigs, Motor6D is suitable for non-character mechanical joints and its `Transform` is intended for custom animation. citeturn0search0
