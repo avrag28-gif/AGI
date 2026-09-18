@@ -152,16 +152,6 @@ function AircraftModelBinder:Step()
 			model:SetAttribute("FlightSimMCPMode",tostring(ap.Mode or "OFF"))
 			model:SetAttribute("FlightSimMCPFlightDirector",ap.FlightDirector==true)
 
-			local mcp=state.MCP or {}
-			model:SetAttribute("FlightSimMCPHeading",finite(mcp.Heading,0))
-			model:SetAttribute("FlightSimMCPAltitude",finite(mcp.Altitude,0))
-			model:SetAttribute("FlightSimMCPSpeed",finite(mcp.Speed,0))
-			model:SetAttribute("FlightSimMCPVerticalSpeed",finite(mcp.VerticalSpeed,0))
-			model:SetAttribute("FlightSimMCPHeadingMode",tostring(mcp.HeadingMode or "OFF"))
-			model:SetAttribute("FlightSimMCPAltitudeMode",tostring(mcp.AltitudeMode or "OFF"))
-			model:SetAttribute("FlightSimMCPVerticalSpeedMode",tostring(mcp.VerticalSpeedMode or "OFF"))
-			model:SetAttribute("FlightSimMCPFlightDirector",mcp.FlightDirector==true)
-			local mcp=state.MCP or {}
 			model:SetAttribute("FlightSimMCPHeading",finite(mcp.Heading,0))
 			model:SetAttribute("FlightSimMCPAltitude",finite(mcp.Altitude,0))
 			model:SetAttribute("FlightSimMCPSpeed",finite(mcp.Speed,0))
