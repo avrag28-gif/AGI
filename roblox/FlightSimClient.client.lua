@@ -1,6 +1,7 @@
 -- FlightSim client: cockpit/input + instrument display layer v1.6
 -- Place this LocalScript in StarterPlayerScripts.
 local Players=game:GetService("Players")
+local CollectionService=game:GetService("CollectionService")
 local UserInputService=game:GetService("UserInputService")
 local RunService=game:GetService("RunService")
 
@@ -115,15 +116,22 @@ local ignition={[1]=false,[2]=false}
 local lastControl={Elevator=999,Aileron=999,Rudder=999,NoseWheelSteering=999}
 local controlAccumulator=0
 
-local function findPhysicalDisplay(names)
-	local tagged=workspace:FindFirstChild("FlightSimAircraft",true)
-	for _,name in ipairs(names) do
-		local obj=workspace:FindFirstChild(name,true)
-		if obj and obj:IsA("BasePart") then return obj end
-		if tagged then
-			obj=tagged:FindFirstChild(name,true)
-			if obj and obj:IsA("BasePart") then return obj end
+local function findLocalAircraft()
+	local id="P_"..tostring(Players.LocalPlayer.UserId)
+	for _,model in ipairs(CollectionService:GetTagged("FlightSimAircraft")) do
+		if model:IsA("Model") and (model:GetAttribute("FlightSimAircraftId")==id or model.Name==id) then
+			return model
 		end
+	end
+	return nil
+end
+
+local function findPhysicalDisplay(names)
+	local aircraft=findLocalAircraft()
+	if not aircraft then return nil end
+	for _,name in ipairs(names) do
+		local obj=aircraft:FindFirstChild(name,true)
+		if obj and obj:IsA("BasePart") then return obj end
 	end
 	return nil
 end
@@ -141,6 +149,7 @@ local function ensureSurfaceDisplay(part,name)
 	sg.LightInfluence=0
 	sg.MaxDistance=100
 	sg.PixelsPerStud=100
+	sg.CanvasSize=Vector2.new(1000,600)
 	sg.Parent=part
 	local label=Instance.new("TextLabel")
 	label.Name="Display"
@@ -151,16 +160,18 @@ local function ensureSurfaceDisplay(part,name)
 	label.TextSize=18
 	label.TextXAlignment=Enum.TextXAlignment.Left
 	label.TextYAlignment=Enum.TextYAlignment.Top
+	label.TextWrapped=false
 	label.Parent=sg
 	return sg
 end
 
 local function refreshPhysicalDisplays()
-	if physicalDisplays.ready then return end
-	physicalDisplays.PFD=ensureSurfaceDisplay(findPhysicalDisplay({"PFDDisplay","CaptainPFD","LeftPFD"}),"FlightSimPFD")
-	physicalDisplays.ND=ensureSurfaceDisplay(findPhysicalDisplay({"NDDisplay","CaptainND","LeftND"}),"FlightSimND")
-	physicalDisplays.EICAS=ensureSurfaceDisplay(findPhysicalDisplay({"EICASDisplay","CenterEICAS","EngineDisplay"}),"FlightSimEICAS")
-	physicalDisplays.ready=true
+	local pfd=ensureSurfaceDisplay(findPhysicalDisplay({"PFDDisplay","CaptainPFD","LeftPFD"}),"FlightSimPFD")
+	local nd=ensureSurfaceDisplay(findPhysicalDisplay({"NDDisplay","CaptainND","LeftND"}),"FlightSimND")
+	local eicas=ensureSurfaceDisplay(findPhysicalDisplay({"EICASDisplay","CenterEICAS","EngineDisplay"}),"FlightSimEICAS")
+	physicalDisplays.PFD=pfd or physicalDisplays.PFD
+	physicalDisplays.ND=nd or physicalDisplays.ND
+	physicalDisplays.EICAS=eicas or physicalDisplays.EICAS
 end
 
 local function send(name,a,b)
