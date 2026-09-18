@@ -128,6 +128,34 @@ function AircraftModelBinder:Step()
 			model:SetAttribute("FlightSimAltitudeFt",finite(state.Altitude,0))
 			model:SetAttribute("FlightSimAirspeedKt",finite(state.Airspeed,0))
 			model:SetAttribute("FlightSimGroundContact",state.GroundContact==true)
+			local elec=state.Electrical or {}
+			local hyd=state.Hydraulic or {}
+			local gearStatus=state.GearStatus or {}
+			local ap=state.Autopilot or {}
+			local at=state.AutoThrottle or {}
+			local brakes=state.Brakes or {}
+			local annunciation=state.Annunciation or {}
+			model:SetAttribute("FlightSimBattery",elec.Battery==true)
+			model:SetAttribute("FlightSimExternalPower",elec.ExternalPower==true)
+			model:SetAttribute("FlightSimAPUGenerator",elec.APUGeneratorAvailable==true)
+			model:SetAttribute("FlightSimBus1",elec.Bus1==true)
+			model:SetAttribute("FlightSimBus2",elec.Bus2==true)
+			model:SetAttribute("FlightSimHydraulicAPressure",finite(hyd.A and hyd.A.Pressure,0))
+			model:SetAttribute("FlightSimHydraulicBPressure",finite(hyd.B and hyd.B.Pressure,0))
+			model:SetAttribute("FlightSimHydraulicStandbyPressure",finite(hyd.Standby and hyd.Standby.Pressure,0))
+			model:SetAttribute("FlightSimGearDownLocked",gearStatus.DownLocked==true)
+			model:SetAttribute("FlightSimGearUpLocked",gearStatus.UpLocked==true)
+			model:SetAttribute("FlightSimGearWarning",gearStatus.Warning==true)
+			model:SetAttribute("FlightSimBrakePressure",finite(brakes.BrakePressure,0))
+			model:SetAttribute("FlightSimParkingBrake",brakes.Parking==true)
+			model:SetAttribute("FlightSimAPEnabled",ap.Enabled==true)
+			model:SetAttribute("FlightSimAPMode",tostring(ap.Mode or "OFF"))
+			model:SetAttribute("FlightSimAPTargetAltitude",finite(ap.TargetAltitude,0))
+			model:SetAttribute("FlightSimATEnabled",at.Enabled==true)
+			model:SetAttribute("FlightSimATMode",tostring(at.Mode or "OFF"))
+			model:SetAttribute("FlightSimATProtection",tostring(at.Protection or "NONE"))
+			model:SetAttribute("FlightSimMasterWarning",(annunciation.MasterWarning or false)==true)
+			model:SetAttribute("FlightSimMasterCaution",(annunciation.MasterCaution or false)==true)
 		end
 	end
 end
