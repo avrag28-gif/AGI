@@ -146,15 +146,6 @@ function AircraftModelBinder:Step()
 			model:SetAttribute("FlightSimAPMode",tostring(ap.Mode or "OFF"))
 			model:SetAttribute("FlightSimAPTargetAltitude",finite(ap.TargetAltitude,0))
 			local mcp=state.MCP or {}
-			model:SetAttribute("FlightSimMCPHeading",finite(mcp.Heading,0))
-			model:SetAttribute("FlightSimMCPAltitude",finite(mcp.Altitude,0))
-			model:SetAttribute("FlightSimMCPSpeed",finite(mcp.Speed,0))
-			model:SetAttribute("FlightSimMCPVerticalSpeed",finite(mcp.VerticalSpeed,0))
-			model:SetAttribute("FlightSimMCPHeadingMode",tostring(mcp.HeadingMode or "OFF"))
-			model:SetAttribute("FlightSimMCPAltitudeMode",tostring(mcp.AltitudeMode or "OFF"))
-			model:SetAttribute("FlightSimMCPVerticalSpeedMode",tostring(mcp.VerticalSpeedMode or "OFF"))
-			model:SetAttribute("FlightSimMCPFlightDirector",mcp.FlightDirector==true)
-			local mcp=state.MCP or {}
 			model:SetAttribute("FlightSimMCPHeading",finite(ap.TargetHeading,0))
 			model:SetAttribute("FlightSimMCPAltitude",finite(ap.TargetAltitude,0))
 			model:SetAttribute("FlightSimMCPSpeed",finite(ap.TargetSpeed,0))
@@ -247,6 +238,17 @@ function AircraftModelBinder:StepControls()
 			animateMotor(findMotor(model,{"NoseGearMotor","GearNoseMotor"}),finite(gear.Nose,0)*gearAngle,"X",alpha)
 			animateMotor(findMotor(model,{"LeftGearMotor","GearLeftMotor"}),finite(gear.Left,0)*gearAngle,"X",alpha)
 			animateMotor(findMotor(model,{"RightGearMotor","GearRightMotor"}),finite(gear.Right,0)*gearAngle,"X",alpha)
+			-- Optional throttle/flap-handle animation for physical cockpit models.
+			local throttle1=finite(throttle[1],0)
+			local throttle2=finite(throttle[2],0)
+			local throttleAngle=attrNumber(model,{"ThrottleAnimationAngle"},35)
+			animateMotor(findMotor(model,{"Throttle1Motor","Engine1ThrottleMotor","LeftThrottleMotor"}),throttle1*throttleAngle,"X",alpha)
+			animateMotor(findMotor(model,{"Throttle2Motor","Engine2ThrottleMotor","RightThrottleMotor"}),throttle2*throttleAngle,"X",alpha)
+			local reverse=state.ReverseThrust or {}
+			model:SetAttribute("FlightSimReverse1",finite(reverse[1],0))
+			model:SetAttribute("FlightSimReverse2",finite(reverse[2],0))
+			animateMotor(findMotor(model,{"FlapLeverMotor","FlapsLeverMotor"}),flap*35,"X",alpha)
+			animateMotor(findMotor(model,{"SpeedbrakeLeverMotor","SpeedbrakeHandleMotor"}),speedbrake*30,"X",alpha)
 		end
 	end
 end
