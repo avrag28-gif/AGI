@@ -19,13 +19,7 @@ local function finite(v,d)
 	return (v and v==v and v~=math.huge and v~=-math.huge) and v or d
 end
 
-local function findMotor(model, names)
-	for _,name in ipairs(names) do
-		local obj=model:FindFirstChild(name,true)
-		if obj and obj:IsA("Motor6D") then return obj end
-	end
-	return nil
-end
+
 
 local function attrNumber(model,names,default)
 	for _,name in ipairs(names) do
