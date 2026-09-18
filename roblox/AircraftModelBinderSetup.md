@@ -53,3 +53,29 @@ The client display layer can optionally bind physical cockpit parts by name:
 The MCP display reports selected speed, heading, altitude, vertical speed, AP/AT/FD state, and current MCP mode fields. The mode lights are optional `BasePart`, `PointLight`, or `SurfaceLight` objects. Missing parts are ignored.
 
 The display is created as a `SurfaceGui` on the local player's aircraft, so it does not require hardcoded cockpit geometry. Roblox supports SurfaceGui rendering on a BasePart face and configurable canvas/pixel density. This is presentation/interaction plumbing; it does not claim to reproduce proprietary Boeing display electronics.
+
+
+## MCP / flight-deck state attributes
+
+The binder also mirrors MCP state to the aircraft Model so cockpit controls and 3D displays can read the same authoritative simulation state:
+
+- `FlightSimMCPHeading`
+- `FlightSimMCPAltitude`
+- `FlightSimMCPSpeed`
+- `FlightSimMCPVerticalSpeed`
+- `FlightSimMCPHeadingMode`
+- `FlightSimMCPAltitudeMode`
+- `FlightSimMCPVerticalSpeedMode`
+- `FlightSimMCPFlightDirector`
+
+These are presentation/interaction attributes; command authority remains server-side through the existing command router.
+
+## Physical cockpit displays
+
+Optional `SurfaceGui` displays are supported by the client display bridge. Name cockpit display parts one of:
+
+- PFD: `PFDDisplay`, `CaptainPFD`, `LeftPFD`
+- ND: `NDDisplay`, `CaptainND`, `LeftND`
+- EICAS: `EICASDisplay`, `CenterEICAS`, `EngineDisplay`
+
+The bridge creates a `SurfaceGui` and `TextLabel` only when a matching `BasePart` exists, so aircraft models without dedicated display geometry continue to work with the normal screen instruments. Roblox documents `SurfaceGui` as the in-world UI container for rendering labels on part faces.
