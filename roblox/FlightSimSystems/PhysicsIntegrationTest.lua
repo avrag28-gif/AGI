@@ -143,6 +143,16 @@ local function run()
  rudderFailed.Sideslip=6; Physics.new(rudderFailed):Step(1/60)
  check(math.abs(rudderFailed.Sideslip)<=12,"rudder-authority degradation must keep sideslip bounded")
 
+ local authorityHigh=baseState()
+ authorityHigh.Surface.Aileron=0.5
+ authorityHigh.ControlFeel={AileronAuthority=1}
+ Physics.new(authorityHigh):Step(1/60)
+ local authorityLow=baseState()
+ authorityLow.Surface.Aileron=0.5
+ authorityLow.ControlFeel={AileronAuthority=0.25}
+ Physics.new(authorityLow):Step(1/60)
+ check(math.abs(authorityLow.RollRate-authorityHigh.RollRate)<1e-9,"Physics must not apply hydraulic/control authority twice after surface deflection is already limited")
+
  local yawState=baseState()
  yawState.Yaw=10
  yawState.Heading=10
