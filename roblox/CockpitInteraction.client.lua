@@ -12,6 +12,13 @@ local player=Players.LocalPlayer
 local rem=RS:WaitForChild("FlightSim"):WaitForChild("Remotes")
 local command=rem:WaitForChild("AircraftCommand")
 local bound={}
+-- MCP 3D contract:
+-- Add ClickDetector to each physical MCP knob/button part and set:
+-- Interaction="MCP_KNOB", Command="MCPHeading|MCPAltitude|MCPSpeed|MCPVerticalSpeed",
+-- Step/Min/Max/Wrap/Direction/ValueAttribute as needed. Left click increments;
+-- right click decrements. AP/A/T mode buttons can use Command="AP" or "AutoThrottle"
+-- with A=true and Toggle=true. MCP mode selectors use Command="MCPMode", A="HDG|LNAV|VNAV|APP|VOR|ALT_HOLD|LCHG|VS|OFF".
+
 
 local function send(control,a,b)
  command:FireServer(control,a,b)
@@ -40,13 +47,13 @@ local function knobValueAttribute(commandName)
  return nil
 end
 
-local function activateKnob(obj,c)
+local function activateKnob(obj,c,directionOverride)
  local aircraft=findAircraftForControl(obj)
  local attr=obj:GetAttribute("ValueAttribute")
  if type(attr)~="string" or attr=="" then attr=knobValueAttribute(c) end
  local current=attr and aircraft and finite(aircraft:GetAttribute(attr),nil)
  local step=finite(obj:GetAttribute("Step"),1)
- local direction=finite(obj:GetAttribute("Direction"),1)
+ local direction=finite(directionOverride,finite(obj:GetAttribute("Direction"),1))
  if current==nil then current=finite(obj:GetAttribute("Value"),0) end
  local minValue=obj:GetAttribute("Min")
  local maxValue=obj:GetAttribute("Max")
@@ -153,7 +160,14 @@ local function bindDetector(detector)
  bound[detector]=true
  if detector:IsA("ClickDetector") then
   detector.MouseClick:Connect(function(p)
-   if p==player then activate(parent) end
+   if p==player then
+    if parent:GetAttribute("Interaction")=="MCP_KNOB" then activateKnob(parent,parent:GetAttribute("Command"),1) else activate(parent) end
+   end
+  end)
+  detector.RightMouseClick:Connect(function(p)
+   if p==player and parent:GetAttribute("Interaction")=="MCP_KNOB" then
+    activateKnob(parent,parent:GetAttribute("Command"),-1)
+   end
   end)
  elseif detector:IsA("ProximityPrompt") then
   detector.Triggered:Connect(function(p)
