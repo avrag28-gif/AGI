@@ -140,7 +140,7 @@ local function run()
  Physics.new(rudderFailed):Step(1/60)
  check(math.abs(rudderFailed.YawRate)<math.abs(rudderNormal.YawRate),"reduced rudder authority must reduce yaw response")
  check((rudderFailed.ControlFeel.PhysicsYawAuthority or 0)<(rudderNormal.ControlFeel.PhysicsYawAuthority or 0),"rudder hydraulic degradation must propagate into Physics yaw-authority telemetry")
- local yawDamperWeak=rudderFailed.Sideslip=6; Physics.new(rudderFailed):Step(1/60)
+ rudderFailed.Sideslip=6; Physics.new(rudderFailed):Step(1/60)
  check(math.abs(rudderFailed.Sideslip)<=12,"rudder-authority degradation must keep sideslip bounded")
 
  local yawState=baseState()
