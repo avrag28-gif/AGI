@@ -14,6 +14,8 @@ function State.new()
 		Altitude=0,Airspeed=0,Heading=0,Pitch=0,Roll=0,Yaw=0,YawRate=0,RollRate=0,PitchRate=0,
 		Sideslip=0,Beta=0,TurnCoordination=0,DynamicPressure=0,LoadFactor=1,GLoad=1,
 		AerodynamicDamping={Yaw=0,Roll=0,Pitch=0},
+		AeroStability={PitchStabilityFactor=1,RollRestoringRate=0,SideslipRollRate=0,StallControlFactor=1},
+		ControlFeel={AileronAuthority=1,ElevatorAuthority=1,RudderAuthority=1,PhysicsRollAuthority=1,PhysicsPitchAuthority=1,PhysicsYawAuthority=1,RudderBlowdownFactor=1},
 		EngineIntegration={TotalThrust=0,LeftThrust=0,RightThrust=0,ThrustAsymmetry=0,EngineOut=false,YawMoment=0},
 		Position=Vector3.zero,Velocity=Vector3.zero,VerticalSpeed=0,AirspeedTrue=0,AoA=0,
 		StallWarning=false,Lift=0,Drag=0,Weight=0,Mass=0,TrimPitch=0,GroundContact=true,
