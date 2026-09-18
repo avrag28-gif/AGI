@@ -70,6 +70,7 @@ local function activateKnob(obj,c,directionOverride)
   end
  end
  obj:SetAttribute("Value",nextValue)
+ updateKnobDisplay(obj,nextValue)
  send(c,nextValue,nil)
 end
 
@@ -146,6 +147,7 @@ local function setupRotaryKnob(obj)
   if nextValue~=lastSent then
    lastSent=nextValue
    obj:SetAttribute("Value",nextValue)
+   updateKnobDisplay(obj,nextValue)
    send(commandName,nextValue,nil)
   end
  end)
@@ -191,6 +193,19 @@ workspace.DescendantAdded:Connect(function(obj)
  end
 end)
 
+local function updateKnobDisplay(obj,value)
+ local display=obj:FindFirstChild("ValueDisplay",true)
+ if display and display:IsA("TextLabel") then
+  local format=obj:GetAttribute("DisplayFormat")
+  if type(format)=="string" and format~="" then
+   local ok,text=pcall(string.format,format,value)
+   display.Text=ok and text or tostring(value)
+  else
+   display.Text=tostring(math.round(value))
+  end
+ end
+end
+
 local function syncMCPKnobValues()
  for obj in pairs(rotaryBound) do
   if obj and obj.Parent and obj:GetAttribute("Interaction")=="MCP_KNOB" then
@@ -200,7 +215,7 @@ local function syncMCPKnobValues()
    if type(attr)~="string" or attr=="" then attr=knobValueAttribute(commandName) end
    if aircraft and attr then
     local value=aircraft:GetAttribute(attr)
-    if type(value)=="number" then obj:SetAttribute("Value",value) end
+    if type(value)=="number" then obj:SetAttribute("Value",value) updateKnobDisplay(obj,value) end
    end
   end
  end
